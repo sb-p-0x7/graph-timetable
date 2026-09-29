@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시간표 그래프</title>
+<meta name="description" content="수업을 노드로, 시간이 겹치는 수업을 간선으로 연결한 충돌 그래프에서 독립집합을 골라 시간표를 짜는 도구">
+<style>
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f0f2f5; --line: #dfe3e8; --line-2: #eceff3;
+  --text: #1c2128; --muted: #6b7480; --accent: #2f6df6; --accent-bg: #e8f0ff;
+  --danger: #d93025; --danger-bg: #fde8e6; --ok: #1a8f4a;
+  --node-fill: #ffffff; --node-l: 46%; --node-s: 62%; --node-text: #ffffff;
+  --blocked: #b9bec6; --blocked-bg: #e9ebef; --edge: #b4bac3; --edge-dim: #e2e5ea; --edge-hi: #1c2128;
+  --shadow: 0 6px 24px rgba(20,30,50,.12);
+  --hour-h: 48px; --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --panel: #171b21; --panel-2: #1e232b; --line: #2b323c; --line-2: #232931;
+    --text: #e6e9ee; --muted: #8b95a3; --accent: #6b9cff; --accent-bg: #1c2a44;
+    --danger: #ff6b5e; --danger-bg: #3a1f1d; --ok: #4fce7f;
+    --node-fill: #171b21; --node-l: 58%; --node-s: 60%; --node-text: #0f1216;
+    --blocked: #4a525d; --blocked-bg: #232931; --edge: #4a525d; --edge-dim: #2a3038; --edge-hi: #e6e9ee;
+    --shadow: 0 6px 24px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --panel: #171b21; --panel-2: #1e232b; --line: #2b323c; --line-2: #232931;
+  --text: #e6e9ee; --muted: #8b95a3; --accent: #6b9cff; --accent-bg: #1c2a44;
+  --danger: #ff6b5e; --danger-bg: #3a1f1d; --ok: #4fce7f;
+  --node-fill: #171b21; --node-l: 58%; --node-s: 60%; --node-text: #0f1216;
+  --blocked: #4a525d; --blocked-bg: #232931; --edge: #4a525d; --edge-dim: #2a3038; --edge-hi: #e6e9ee;
+  --shadow: 0 6px 24px rgba(0,0,0,.45);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.45; overflow: hidden;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+.btn {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); }
+.btn.small { padding: 3px 8px; font-size: 12px; border-radius: 6px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+/* ---------- top bar ---------- */
+.topbar {
+  height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 16px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.topbar h1 { font-size: 17px; margin: 0; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+.topbar h1 .sub { font-size: 12px; color: var(--muted); font-weight: 400; }
+.topbar .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---------- layout ---------- */
+.layout {
+  display: grid; grid-template-columns: 270px minmax(0, 1fr) 400px;
+  height: calc(100% - 56px); min-height: 0;
+}
+.pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+#sidebar { border-right: 1px solid var(--line); background: var(--panel); }
+#grid-pane { border-left: 1px solid var(--line); background: var(--panel); }
+.pane-head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line);
+  font-weight: 600; font-size: 13px;
+}
+.pane-head .hint { color: var(--muted); font-weight: 400; margin-left: auto; font-size: 12px; }
+.pane-body { flex: 1; min-height: 0; overflow: auto; }
+
+/* ---------- course list ---------- */
+#course-list { list-style: none; margin: 0; padding: 6px; }
+#course-list li {
+  display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: center;
+  padding: 8px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+}
+#course-list li:hover, #course-list li.hover { background: var(--panel-2); }
+#course-list li[data-state="selected"] { background: var(--accent-bg); border-color: var(--accent); }
+#course-list li[data-state="blocked"] { opacity: .55; cursor: not-allowed; }
+#course-list .dot { width: 12px; height: 12px; border-radius: 50%; background: hsl(var(--h) var(--node-s) var(--node-l)); }
+#course-list li[data-state="blocked"] .dot { background: var(--blocked); }
+#course-list .title { font-weight: 600; font-size: 13px; }
+#course-list .title .sec { color: var(--muted); font-weight: 400; margin-left: 4px; }
+#course-list .meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#course-list .badge {
+  display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); margin-left: 4px;
+}
+#course-list li[data-state="selected"] .badge.state { background: var(--accent); color: #fff; }
+#course-list li[data-state="blocked"] .badge.state { background: var(--blocked-bg); color: var(--muted); }
+#course-list .ops { display: flex; gap: 4px; opacity: 0; }
+#course-list li:hover .ops, #course-list li:focus-within .ops { opacity: 1; }
+.sidebar-foot {
+  border-top: 1px solid var(--line); padding: 10px 14px; display: flex; align-items: center; gap: 8px; font-size: 13px;
+}
+.sidebar-foot .sum { font-weight: 600; }
+.sidebar-foot .btn { margin-left: auto; }
+.empty { color: var(--muted); padding: 24px 16px; text-align: center; font-size: 13px; }
+
+/* ---------- graph ---------- */
+#graph-pane { background: var(--bg); position: relative; }
+#graph-pane .pane-head { background: var(--panel); }
+#graph-wrap { flex: 1; min-height: 0; position: relative; }
+#graph { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
+.legend { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--muted); padding: 6px 14px; border-top: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--edge); }
+.legend i.dashed { border-top-style: dashed; }
+.legend b { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+.legend b.sel { background: hsl(215 62% 46%); }
+.legend b.blk { background: var(--blocked-bg); border: 2px solid var(--blocked); }
+
+.edge { stroke: var(--edge); stroke-width: 1.6; fill: none; transition: stroke .15s, opacity .15s; }
+.edge.section { stroke-dasharray: 6 5; }
+.edge.dim { stroke: var(--edge-dim); }
+.edge.hi { stroke: var(--edge-hi); stroke-width: 2.4; }
+.edge-hit { stroke: transparent; stroke-width: 14; fill: none; cursor: help; }
+
+.node { cursor: pointer; }
+.node circle {
+  fill: var(--node-fill); stroke: hsl(var(--h) var(--node-s) var(--node-l)); stroke-width: 3;
+  transition: fill .15s, stroke .15s, r .15s;
+}
+.node text { pointer-events: none; font-family: inherit; }
+.node .sec { font-size: 13px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: hsl(var(--h) var(--node-s) var(--node-l)); }
+.node .name {
+  font-size: 12px; font-weight: 600; text-anchor: middle; fill: var(--text);
+  paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round;
+}
+.node[data-state="selected"] circle { fill: hsl(var(--h) var(--node-s) var(--node-l)); }
+.node[data-state="selected"] .sec { fill: var(--node-text); }
+.node[data-state="blocked"] { cursor: not-allowed; }
+.node[data-state="blocked"] circle { fill: var(--blocked-bg); stroke: var(--blocked); stroke-dasharray: 4 3; }
+.node[data-state="blocked"] .sec { fill: var(--muted); }
+.node[data-state="blocked"] .name { fill: var(--muted); }
+.node.hover circle, .node.neighbor circle { stroke-width: 4.5; }
+.node.hover circle { filter: drop-shadow(0 0 6px hsl(var(--h) var(--node-s) var(--node-l) / .6)); }
+.node.faded { opacity: .35; }
+.node.shake { animation: shake .3s; }
+@keyframes shake { 0%,100%{transform:translate(0,0)} 25%{transform:translate(-4px,0)} 75%{transform:translate(4px,0)} }
+.node.shake > g { animation: shake .3s; }
+#graph .empty-msg { fill: var(--muted); font-size: 15px; text-anchor: middle; }
+
+/* ---------- timetable grid ---------- */
+#grid-scroll { flex: 1; min-height: 0; overflow: auto; }
+#grid { display: grid; grid-template-columns: 46px repeat(var(--days, 5), minmax(0, 1fr)); min-width: 0; }
+#grid .corner, #grid .day-head {
+  position: sticky; top: 0; z-index: 3; background: var(--panel); border-bottom: 1px solid var(--line);
+  font-size: 12px; font-weight: 600; text-align: center; padding: 6px 0; color: var(--muted);
+}
+#grid .day-head.weekend { color: var(--danger); }
+#grid .time-col { position: relative; height: calc(var(--hours) * var(--hour-h)); border-right: 1px solid var(--line); }
+#grid .time-col .t { position: absolute; right: 6px; transform: translateY(-50%); font-size: 11px; color: var(--muted); }
+#grid .day-col {
+  position: relative; height: calc(var(--hours) * var(--hour-h)); border-right: 1px solid var(--line-2);
+  background: repeating-linear-gradient(to bottom, var(--line-2) 0 1px, transparent 1px var(--hour-h));
+}
+#grid .day-col.weekend { background-color: color-mix(in srgb, var(--panel) 92%, var(--danger)); }
+.blk {
+  position: absolute; left: 2px; right: 2px; border-radius: 6px; padding: 3px 5px; overflow: hidden;
+  background: hsl(var(--h) var(--node-s) var(--node-l)); color: #fff; font-size: 11px; line-height: 1.3;
+  box-shadow: 0 1px 2px rgba(0,0,0,.15); cursor: pointer; z-index: 1;
+}
+.blk .n { font-weight: 700; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk .m { opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk.hover { outline: 2px solid var(--edge-hi); outline-offset: -2px; }
+.blk.ghost {
+  background: hsl(var(--h) var(--node-s) var(--node-l) / .18); color: hsl(var(--h) var(--node-s) calc(var(--node-l) - 8%));
+  border: 2px dashed hsl(var(--h) var(--node-s) var(--node-l)); pointer-events: none; z-index: 2;
+}
+:root[data-theme="dark"] .blk.ghost { color: hsl(var(--h) var(--node-s) 75%); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .blk.ghost { color: hsl(var(--h) var(--node-s) 75%); } }
+.blk.ghost.blocked {
+  border-color: var(--danger); color: var(--danger);
+  background: repeating-linear-gradient(45deg, var(--danger-bg) 0 6px, transparent 6px 12px);
+}
+.blk.clash { outline: 2px solid var(--danger); outline-offset: -2px; z-index: 1; }
+
+/* ---------- dialog / form ---------- */
+dialog {
+  border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--panel); color: var(--text);
+  width: min(560px, calc(100vw - 32px)); box-shadow: var(--shadow);
+}
+dialog::backdrop { background: rgba(10,14,20,.45); }
+dialog form { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+dialog h2 { margin: 0 0 4px; font-size: 16px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.field input, .field select, .slot-row select, .slot-row input {
+  font: inherit; font-size: 13px; color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 8px; min-width: 0;
+}
+.field input:focus, .slot-row select:focus, .slot-row input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row.three { grid-template-columns: 2fr 1fr 1fr; }
+.slots-head { display: flex; align-items: center; font-size: 12px; color: var(--muted); }
+.slots-head .btn { margin-left: auto; }
+.slot-row { display: grid; grid-template-columns: 84px 1fr 14px 1fr 30px; gap: 6px; align-items: center; }
+.slot-row .tilde { text-align: center; color: var(--muted); }
+.slot-row .rm { border: none; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; padding: 4px; border-radius: 6px; }
+.slot-row .rm:hover { background: var(--danger-bg); color: var(--danger); }
+.form-errors { color: var(--danger); font-size: 12px; margin: 0; padding-left: 18px; }
+.form-errors:empty { display: none; }
+.dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+/* ---------- tooltip / toast / drop ---------- */
+#tooltip {
+  position: fixed; z-index: 50; max-width: 320px; pointer-events: none;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 10px; font-size: 12px; box-shadow: var(--shadow); line-height: 1.45;
+}
+#tooltip .tt-title { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+#tooltip .tt-sub { color: var(--muted); }
+#tooltip .tt-why { color: var(--danger); margin-top: 4px; }
+#tooltip .tt-ok { color: var(--ok); margin-top: 4px; }
+#tooltip ul { margin: 2px 0 0; padding-left: 16px; }
+#toast-wrap { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.toast {
+  background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-size: 13px; box-shadow: var(--shadow);
+  max-width: min(520px, calc(100vw - 32px)); animation: toast-in .2s ease-out;
+}
+.toast.error { background: var(--danger); color: #fff; }
+.toast details { margin-top: 4px; } .toast summary { cursor: pointer; } .toast ul { margin: 4px 0 0; padding-left: 18px; max-height: 160px; overflow: auto; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px);} to { opacity: 1; transform: none;} }
+#drop-overlay {
+  position: fixed; inset: 0; z-index: 70; background: rgba(47,109,246,.12); border: 4px dashed var(--accent);
+  display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: var(--accent); pointer-events: none;
+}
+[hidden] { display: none !important; }
+
+/* ---------- self-test ---------- */
+#selftest { padding: 20px; overflow: auto; height: 100%; }
+#selftest table { border-collapse: collapse; width: 100%; font-size: 13px; }
+#selftest th, #selftest td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+#selftest tr.pass td:first-child { color: var(--ok); font-weight: 700; }
+#selftest tr.fail td:first-child { color: var(--danger); font-weight: 700; }
+#selftest pre { margin: 0; white-space: pre-wrap; font-size: 12px; color: var(--muted); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1280px) { .layout { grid-template-columns: 240px minmax(0, 1fr) 340px; } }
+@media (max-width: 1024px) {
+  body { overflow: auto; }
+  .layout { grid-template-columns: 1fr; height: auto; }
+  #sidebar { border-right: none; border-bottom: 1px solid var(--line); max-height: 320px; }
+  #graph-pane { height: 520px; }
+  #grid-pane { border-left: none; border-top: 1px solid var(--line); height: 560px; }
+  .topbar { height: auto; padding: 8px 12px; flex-wrap: wrap; }
+  .layout { height: auto; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>시간표 그래프 <span class="sub">겹치는 수업은 간선으로, 시간표는 독립집합으로</span></h1>
+  <div class="actions">
+    <button class="btn primary" id="btn-add" type="button">＋ 과목 추가</button>
+    <button class="btn" id="btn-import" type="button" title="JSON 또는 CSV 파일 (드래그 앤 드롭도 가능)">파일 불러오기</button>
+    <button class="btn" id="btn-export" type="button">JSON 내보내기</button>
+    <button class="btn" id="btn-sample" type="button" title="내장 샘플 데이터로 되돌립니다">샘플로 초기화</button>
+    <button class="btn" id="btn-theme" type="button" title="라이트/다크 전환">🌓</button>
+  </div>
+</header>
+
+<main class="layout" id="app-root">
+  <aside class="pane" id="sidebar">
+    <div class="pane-head">과목 목록 <span class="hint" id="course-count"></span></div>
+    <div class="pane-body">
+      <ul id="course-list"></ul>
+      <div class="empty" id="list-empty" hidden>과목이 없습니다.<br>「＋ 과목 추가」 또는 「파일 불러오기」로 시작하세요.</div>
+    </div>
+    <div class="sidebar-foot">
+      <span class="sum" id="sel-summary">선택 0과목</span>
+      <button class="btn small" id="btn-clear-sel" type="button">선택 해제</button>
+    </div>
+  </aside>
+
+  <section class="pane" id="graph-pane">
+    <div class="pane-head">충돌 그래프 <span class="hint">클릭: 선택/해제 · 드래그: 이동 · 마우스 올리기: 이유 보기</span></div>
+    <div id="graph-wrap">
+      <svg id="graph" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet" role="img" aria-label="수업 충돌 그래프">
+        <g id="g-edges"></g>
+        <g id="g-edge-hits"></g>
+        <g id="g-nodes"></g>
+        <text id="graph-empty" class="empty-msg" x="400" y="300" hidden>과목을 추가하거나 샘플을 불러오세요</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i></i> 시간 겹침</span>
+      <span><i class="dashed"></i> 같은 과목 · 다른 분반</span>
+      <span><b class="sel"></b> 선택됨</span>
+      <span><b class="blk"></b> 선택 불가 (선택한 수업과 충돌)</span>
+    </div>
+  </section>
+
+  <section class="pane" id="grid-pane">
+    <div class="pane-head">주간 시간표 <span class="hint" id="grid-hint"></span></div>
+    <div id="grid-scroll"><div id="grid"></div></div>
+  </section>
+</main>
+
+<dialog id="course-dialog">
+  <form id="course-form" method="dialog" novalidate>
+    <h2 id="dialog-title">과목 추가</h2>
+    <div class="row three">
+      <label class="field">과목명 *<input name="name" required maxlength="60" autocomplete="off" placeholder="예: 자료구조"></label>
+      <label class="field">분반<input name="section" maxlength="10" autocomplete="off" placeholder="01"></label>
+      <label class="field">학점<input name="credits" type="number" min="0" max="20" step="0.5" placeholder="3"></label>
+    </div>
+    <div class="row">
+      <label class="field">교수<input name="professor" maxlength="40" autocomplete="off" placeholder="선택"></label>
+      <label class="field">강의실<input name="room" maxlength="40" autocomplete="off" placeholder="선택"></label>
+    </div>
+    <div class="slots-head">수업 시간 <span style="margin-left:6px">(없으면 시간 미정 과목으로 저장)</span>
+      <button class="btn small" type="button" id="btn-add-slot">＋ 시간 추가</button>
+    </div>
+    <div id="slot-rows"></div>
+    <ul class="form-errors" id="form-errors"></ul>
+    <div class="dialog-actions">
+      <button class="btn" type="button" id="btn-cancel">취소</button>
+      <button class="btn primary" type="submit" id="btn-save">저장</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="tooltip" role="tooltip" hidden></div>
+<div id="toast-wrap" aria-live="polite"></div>
+<div id="drop-overlay" hidden>파일을 여기에 놓으면 불러옵니다 (JSON / CSV)</div>
+<input type="file" id="file-input" accept=".json,.csv,application/json,text/csv" hidden>
+<div id="selftest" hidden></div>
+
+<!-- ======================================================================
+     tt-core : 순수 로직 (DOM 접근 없음). window.TT 로 노출.
+     ====================================================================== -->
+<script id="tt-core">
+(function (global) {
+'use strict';
+const TT = {};
+
+TT.DAYS = ['월', '화', '수', '목', '금', '토', '일'];
+TT.PALETTE = [215, 4, 145, 32, 275, 185, 335, 52, 100, 250, 20, 162]; // hue 값 12개
+TT.DEFAULT_RANGE = { start: 9 * 60, end: 18 * 60 };
+
+// ---------- 기본 헬퍼 ----------
+TT.nfc = function (s) { return String(s == null ? '' : s).trim().normalize('NFC'); };
+
+TT.uid = function () {
+  if (global.crypto && typeof global.crypto.randomUUID === 'function') return 'c-' + global.crypto.randomUUID().slice(0, 8);
+  return 'c-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+};
+
+TT.parseTime = function (x) {
+  if (typeof x === 'number') return Number.isInteger(x) && x >= 0 && x < 1440 ? x : null;
+  const m = /^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/.exec(String(x == null ? '' : x));
+  if (!m) return null;
+  const h = +m[1], mi = +m[2];
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+};
+TT.toMin = TT.parseTime;
+TT.formatTime = function (min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+};
+
+const EN_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+TT.parseDay = function (x) {
+  if (typeof x === 'number') return Number.isInteger(x) && x >= 1 && x <= 7 ? x : null;
+  const s = TT.nfc(x);
+  if (!s) return null;
+  if (/^\d+$/.test(s)) { const n = +s; return n >= 1 && n <= 7 ? n : null; }
+  const k = '월화수목금토일'.indexOf(s[0]);
+  if (k >= 0 && (s.length === 1 || s === s[0] + '요일')) return k + 1;
+  const lo = s.toLowerCase();
+  if (/^[a-z]+$/.test(lo)) { const i = EN_DAYS.indexOf(lo.slice(0, 3)); if (i >= 0) return i + 1; }
+  return null;
+};
+TT.dayLabel = function (d) { return TT.DAYS[d - 1] || '?'; };
+
+TT.sectionKey = function (s) {
+  const t = TT.nfc(s);
+  return /^\d+$/.test(t) ? String(parseInt(t, 10)) : t.toLowerCase();
+};
+TT.courseKey = function (c) { return JSON.stringify([TT.nfc(c.name), TT.sectionKey(c.section)]); };
+TT.courseLabel = function (c) { return c.section ? c.name + ' ' + c.section : c.name; };
+TT.slotText = function (slot) { return TT.dayLabel(slot.day) + ' ' + slot.start + '–' + slot.end; };
+
+// ---------- 정규화 ----------
+TT.normalizeSlot = function (raw) {
+  if (!raw || typeof raw !== 'object') return { ok: false, error: '시간 정보가 없습니다' };
+  const day = TT.parseDay(raw.day);
+  if (day == null) return { ok: false, error: '요일이 올바르지 않습니다 (월~일)' };
+  const s = TT.parseTime(raw.start), e = TT.parseTime(raw.end);
+  if (s == null || e == null) return { ok: false, error: '시간 형식이 올바르지 않습니다 (HH:MM)' };
+  if (e <= s) return { ok: false, error: '종료 시간은 시작 시간보다 늦어야 합니다' };
+  return { ok: true, slot: { day: day, start: TT.formatTime(s), end: TT.formatTime(e) } };
+};
+
+TT.normalizeCourse = function (raw, opts) {
+  opts = opts || {};
+  raw = raw && typeof raw === 'object' ? raw : {};
+  const errors = [];
+  const name = TT.nfc(raw.name);
+  if (!name) errors.push('과목명을 입력하세요');
+  const section = TT.nfc(raw.section) || (opts.defaultSection != null ? opts.defaultSection : '01');
+  const professor = TT.nfc(raw.professor) || null;
+  const room = TT.nfc(raw.room) || null;
+  let credits = null;
+  if (raw.credits != null && TT.nfc(raw.credits) !== '') {
+    credits = Number(raw.credits);
+    if (!Number.isFinite(credits) || credits < 0) { errors.push('학점은 0 이상의 숫자여야 합니다'); credits = null; }
+  }
+  const slots = [];
+  const rawSlots = raw.slots == null ? [] : raw.slots;
+  if (!Array.isArray(rawSlots)) errors.push('시간 목록(slots)이 배열이 아닙니다');
+  else rawSlots.forEach(function (rs, i) {
+    const r = TT.normalizeSlot(rs);
+    if (r.ok) slots.push(r.slot); else errors.push('시간 ' + (i + 1) + ': ' + r.error);
+  });
+  for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) {
+    if (TT.slotsOverlap(slots[i], slots[j])) errors.push('과목 내 수업 시간이 서로 겹칩니다 (' + TT.slotText(slots[i]) + ' / ' + TT.slotText(slots[j]) + ')');
+  }
+  slots.sort(function (a, b) { return a.day - b.day || TT.toMin(a.start) - TT.toMin(b.start); });
+  const course = {
+    id: raw.id != null && String(raw.id).trim() ? String(raw.id).trim() : TT.uid(),
+    name: name, section: section, professor: professor, credits: credits, room: room, slots: slots
+  };
+  return { ok: errors.length === 0, course: course, errors: errors };
+};
+
+// ---------- 충돌 / 그래프 ----------
+TT.slotsOverlap = function (a, b) {
+  return a.day === b.day && TT.toMin(a.start) < TT.toMin(b.end) && TT.toMin(b.start) < TT.toMin(a.end);
+};
+TT.slotIntersection = function (a, b) {
+  if (!TT.slotsOverlap(a, b)) return null;
+  return { day: a.day, start: TT.formatTime(Math.max(TT.toMin(a.start), TT.toMin(b.start))), end: TT.formatTime(Math.min(TT.toMin(a.end), TT.toMin(b.end))) };
+};
+TT.conflict = function (a, b) {
+  if (a.id === b.id) return null;
+  const section = a.name === b.name;
+  const overlaps = [];
+  a.slots.forEach(function (sa) { b.slots.forEach(function (sb) {
+    const it = TT.slotIntersection(sa, sb);
+    if (it) overlaps.push({ aSlot: sa, bSlot: sb, day: it.day, start: it.start, end: it.end });
+  }); });
+  if (!section && overlaps.length === 0) return null;
+  return { section: section, overlaps: overlaps };
+};
+TT.buildGraph = function (courses) {
+  const nodes = courses.slice();
+  const byId = new Map(); const adj = new Map(); const edges = [];
+  nodes.forEach(function (c) { byId.set(c.id, c); adj.set(c.id, new Map()); });
+  for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+    const c = TT.conflict(nodes[i], nodes[j]);
+    if (!c) continue;
+    const e = { a: nodes[i].id, b: nodes[j].id, section: c.section, overlaps: c.overlaps };
+    edges.push(e); adj.get(e.a).set(e.b, e); adj.get(e.b).set(e.a, e);
+  }
+  return { nodes: nodes, edges: edges, adj: adj, byId: byId };
+};
+TT.neighbors = function (graph, id) { const m = graph.adj.get(id); return m ? Array.from(m.keys()) : []; };
+TT.edgeReasons = function (graph, edge) {
+  const out = [];
+  if (edge.section) out.push('같은 과목의 다른 분반');
+  edge.overlaps.forEach(function (o) { out.push(TT.dayLabel(o.day) + ' ' + o.start + '–' + o.end + ' 겹침'); });
+  return out;
+};
+
+// ---------- 선택 규칙 (불변식: 선택 집합은 항상 독립집합) ----------
+TT.selectionState = function (graph, selected) {
+  const blocked = new Map();
+  selected.forEach(function (sid) {
+    if (!graph.byId.has(sid)) return;
+    TT.neighbors(graph, sid).forEach(function (nb) {
+      if (selected.has(nb)) return;
+      if (!blocked.has(nb)) blocked.set(nb, []);
+      blocked.get(nb).push(sid);
+    });
+  });
+  return { selected: selected, blocked: blocked };
+};
+TT.canSelect = function (graph, selected, id) {
+  if (!graph.byId.has(id) || selected.has(id)) return false;
+  return !TT.neighbors(graph, id).some(function (nb) { return selected.has(nb); });
+};
+TT.explainBlock = function (graph, selected, id) {
+  const out = [];
+  selected.forEach(function (sid) {
+    const edge = graph.adj.get(id) && graph.adj.get(id).get(sid);
+    if (!edge) return;
+    const blocker = graph.byId.get(sid);
+    out.push({ blockerId: sid, text: TT.courseLabel(blocker) + ': ' + TT.edgeReasons(graph, edge).join(', ') });
+  });
+  return out;
+};
+TT.toggleSelect = function (graph, selected, id) {
+  if (!graph.byId.has(id)) return { selected: selected, changed: false, reason: '존재하지 않는 과목입니다' };
+  const next = new Set(selected);
+  if (next.has(id)) { next.delete(id); return { selected: next, changed: true }; }
+  if (!TT.canSelect(graph, selected, id)) {
+    return { selected: selected, changed: false, reason: TT.explainBlock(graph, selected, id).map(function (x) { return x.text; }).join('\n') };
+  }
+  next.add(id);
+  return { selected: next, changed: true };
+};
+TT.pruneSelection = function (graph, selected, opts) {
+  opts = opts || {};
+  const prefer = new Set(opts.preferDrop || []);
+  const order = []; const dropped = [];
+  selected.forEach(function (id) { if (graph.byId.has(id)) order.push(id); else dropped.push({ id: id, because: null }); });
+  for (;;) {
+    let pair = null;
+    outer: for (let i = 0; i < order.length; i++) for (let j = i + 1; j < order.length; j++) {
+      if (graph.adj.get(order[i]).has(order[j])) { pair = [order[i], order[j]]; break outer; }
+    }
+    if (!pair) break;
+    let drop;
+    if (prefer.has(pair[0])) drop = pair[0]; else if (prefer.has(pair[1])) drop = pair[1]; else drop = pair[1];
+    dropped.push({ id: drop, because: drop === pair[0] ? pair[1] : pair[0] });
+    order.splice(order.indexOf(drop), 1);
+  }
+  return { selected: new Set(order), dropped: dropped };
+};
+
+// ---------- 색 / 범위 / 합계 ----------
+TT.assignColors = function (names, existing) {
+  const map = new Map(existing || []);
+  const present = Array.from(new Set(names));
+  present.forEach(function (n) {
+    if (map.has(n)) return;
+    const used = new Array(TT.PALETTE.length).fill(0);
+    present.forEach(function (p) { if (map.has(p)) used[map.get(p)]++; });
+    let best = 0; for (let i = 1; i < used.length; i++) if (used[i] < used[best]) best = i;
+    map.set(n, best);
+  });
+  return map;
+};
+TT.timeRange = function (courses, def) {
+  def = def || TT.DEFAULT_RANGE;
+  let s = def.start, e = def.end;
+  courses.forEach(function (c) { c.slots.forEach(function (sl) {
+    s = Math.min(s, Math.floor(TT.toMin(sl.start) / 60) * 60);
+    e = Math.max(e, Math.ceil(TT.toMin(sl.end) / 60) * 60);
+  }); });
+  return { startMin: s, endMin: e };
+};
+TT.daysNeeded = function (courses) {
+  let max = 5;
+  courses.forEach(function (c) { c.slots.forEach(function (sl) { max = Math.max(max, sl.day); }); });
+  const out = []; for (let d = 1; d <= max; d++) out.push(d);
+  return out;
+};
+TT.totalCredits = function (courses, selected) {
+  let sum = 0;
+  courses.forEach(function (c) { if (selected.has(c.id) && typeof c.credits === 'number') sum += c.credits; });
+  return sum;
+};
+
+// ---------- CSV / JSON ----------
+TT.parseCSV = function (text) {
+  text = String(text == null ? '' : text);
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [], lines = [];
+  let row = [], cell = '', inQ = false, line = 1, rowLine = 1, i = 0;
+  const pushRow = function () { row.push(cell); rows.push(row); lines.push(rowLine); row = []; cell = ''; rowLine = line; };
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i += 2; continue; } inQ = false; i++; continue; }
+      if (ch === '\n') line++;
+      cell += ch; i++; continue;
+    }
+    if (ch === '"') { inQ = true; i++; continue; }
+    if (ch === ',') { row.push(cell); cell = ''; i++; continue; }
+    if (ch === '\r') { if (text[i + 1] === '\n') i++; line++; pushRow(); i++; continue; }
+    if (ch === '\n') { line++; pushRow(); i++; continue; }
+    cell += ch; i++;
+  }
+  if (cell !== '' || row.length) pushRow();
+  return { rows: rows, lines: lines };
+};
+
+const CSV_ALIASES = {
+  name: ['name', '과목', '과목명', 'course', 'title', '수업', '수업명', '교과목', '교과목명'],
+  section: ['section', '분반', 'sec', 'class'],
+  professor: ['professor', '교수', '교수명', 'prof', '담당교수', '강사'],
+  credits: ['credits', 'credit', '학점'],
+  room: ['room', '강의실', '장소', '강의장소'],
+  day: ['day', '요일'],
+  start: ['start', '시작', '시작시간', 'begin', 'from'],
+  end: ['end', '종료', '종료시간', 'finish', 'to']
+};
+TT.coursesFromCSV = function (text) {
+  const errors = [], warnings = [];
+  const parsed = TT.parseCSV(text);
+  const rows = [], lines = [];
+  parsed.rows.forEach(function (r, i) { if (r.some(function (c) { return TT.nfc(c) !== ''; })) { rows.push(r); lines.push(parsed.lines[i]); } });
+  if (!rows.length) return { courses: [], errors: [{ line: 0, message: '비어 있는 파일입니다' }], warnings: warnings };
+  const header = rows[0].map(function (h) { return TT.nfc(h).toLowerCase(); });
+  const col = {};
+  Object.keys(CSV_ALIASES).forEach(function (f) {
+    const idx = header.findIndex(function (h) { return CSV_ALIASES[f].indexOf(h) >= 0; });
+    if (idx >= 0) col[f] = idx;
+  });
+  if (col.name == null) return { courses: [], errors: [{ line: lines[0], message: '과목명(name) 열이 없습니다. 첫 줄은 헤더여야 합니다' }], warnings: warnings };
+  const get = function (r, f) { return col[f] == null ? '' : TT.nfc(r[col[f]]); };
+  const groups = new Map();
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i], line = lines[i];
+    const name = get(r, 'name');
+    if (!name) { errors.push({ line: line, message: '과목명이 비어 있습니다' }); continue; }
+    const day = get(r, 'day'), start = get(r, 'start'), end = get(r, 'end');
+    let slot = null;
+    if (day || start || end) {
+      if (!(day && start && end)) { errors.push({ line: line, message: '요일·시작·종료를 모두 적거나 모두 비워 두세요' }); continue; }
+      const ns = TT.normalizeSlot({ day: day, start: start, end: end });
+      if (!ns.ok) { errors.push({ line: line, message: ns.error }); continue; }
+      slot = ns.slot;
+    }
+    const section = get(r, 'section') || '01';
+    const key = TT.courseKey({ name: name, section: section });
+    if (!groups.has(key)) groups.set(key, { name: name, section: section, professor: null, credits: null, room: null, slots: [], line: line });
+    const g = groups.get(key);
+    if (!g.professor && get(r, 'professor')) g.professor = get(r, 'professor');
+    if (g.credits == null && get(r, 'credits') !== '') g.credits = get(r, 'credits');
+    if (!g.room && get(r, 'room')) g.room = get(r, 'room');
+    if (slot && !g.slots.some(function (s) { return s.day === slot.day && s.start === slot.start && s.end === slot.end; })) g.slots.push(slot);
+  }
+  const courses = [];
+  groups.forEach(function (g) {
+    const n = TT.normalizeCourse(g);
+    if (n.ok) courses.push(n.course);
+    else errors.push({ line: g.line, message: g.name + ' ' + g.section + ': ' + n.errors.join(', ') });
+  });
+  return { courses: courses, errors: errors, warnings: warnings };
+};
+
+TT.coursesFromJSON = function (text) {
+  const errors = [], warnings = [];
+  let data;
+  try { data = JSON.parse(String(text)); }
+  catch (e) { return { courses: [], selected: [], errors: [{ line: 0, message: 'JSON 형식이 올바르지 않습니다: ' + e.message }], warnings: warnings }; }
+  if (Array.isArray(data)) data = { courses: data };
+  if (!data || typeof data !== 'object' || !Array.isArray(data.courses)) {
+    return { courses: [], selected: [], errors: [{ line: 0, message: 'courses 배열을 찾을 수 없습니다' }], warnings: warnings };
+  }
+  if (typeof data.version === 'number' && data.version > 1) warnings.push('알 수 없는 버전(' + data.version + ')입니다. 읽을 수 있는 항목만 불러옵니다');
+  const courses = [], keys = new Set(), ids = new Set();
+  data.courses.forEach(function (raw, i) {
+    const n = TT.normalizeCourse(raw);
+    if (!n.ok) { errors.push({ line: i + 1, message: (i + 1) + '번째 항목: ' + n.errors.join(', ') }); return; }
+    const key = TT.courseKey(n.course);
+    if (keys.has(key)) { warnings.push((i + 1) + '번째 항목 중복: ' + TT.courseLabel(n.course) + ' (건너뜀)'); return; }
+    if (ids.has(n.course.id)) { warnings.push((i + 1) + '번째 항목의 id가 중복되어 새 id를 부여했습니다'); n.course.id = TT.uid(); }
+    keys.add(key); ids.add(n.course.id); courses.push(n.course);
+  });
+  let selected = Array.isArray(data.selected) ? data.selected.filter(function (id) { return ids.has(id); }) : [];
+  const pr = TT.pruneSelection(TT.buildGraph(courses), new Set(selected));
+  pr.dropped.forEach(function (d) {
+    const c = courses.find(function (x) { return x.id === d.id; });
+    if (c) warnings.push('선택 항목 충돌로 해제: ' + TT.courseLabel(c));
+  });
+  selected = Array.from(pr.selected);
+  return { courses: courses, selected: selected, errors: errors, warnings: warnings };
+};
+
+TT.sniffFormat = function (text) {
+  const t = String(text == null ? '' : text).replace(/^﻿/, '').replace(/^\s+/, '');
+  return (t[0] === '{' || t[0] === '[') ? 'json' : 'csv';
+};
+TT.importAny = function (text) {
+  const fmt = TT.sniffFormat(text);
+  const res = fmt === 'json' ? TT.coursesFromJSON(text) : TT.coursesFromCSV(text);
+  if (!res.selected) res.selected = [];
+  res.format = fmt;
+  return res;
+};
+
+TT.toJSON = function (courses, selected, opts) {
+  opts = opts || {};
+  const sel = selected ? Array.from(selected) : [];
+  const doc = {
+    format: 'timetable-graph', version: 1,
+    exportedAt: opts.now || new Date().toISOString(),
+    courses: courses.map(function (c) { return {
+      id: c.id, name: c.name, section: c.section, professor: c.professor, credits: c.credits, room: c.room,
+      slots: c.slots.map(function (s) { return { day: TT.dayLabel(s.day), start: s.start, end: s.end }; })
+    }; }),
+    selected: sel
+  };
+  return JSON.stringify(doc, null, 2);
+};
+TT.toCSV = function (courses) {
+  const q = function (v) { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const out = ['name,section,professor,credits,room,day,start,end'];
+  courses.forEach(function (c) {
+    const base = [c.name, c.section, c.professor, c.credits, c.room].map(q).join(',');
+    if (!c.slots.length) out.push(base + ',,,');
+    c.slots.forEach(function (s) { out.push(base + ',' + [TT.dayLabel(s.day), s.start, s.end].map(q).join(',')); });
+  });
+  return '﻿' + out.join('\r\n') + '\r\n';
+};
+
+// ---------- 시드 난수 / 힘 기반 배치 ----------
+TT.mulberry32 = function (seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+TT.Force = function (opts) {
+  opts = opts || {};
+  this.W = opts.W || 800; this.H = opts.H || 600; this.R = opts.R || 22; this.PAD = opts.PAD || 34;
+  this.K_REPEL = 16000; this.L_EDGE = 170; this.K_SPRING = 0.03; this.K_GRAVITY = 0.004; this.K_COLLIDE = 0.5;
+  this.DAMPING = 0.85; this.MAX_V = 10; this.ALPHA_DECAY = 0.025; this.ALPHA_MIN = 0.003;
+  this.rand = TT.mulberry32(opts.seed == null ? 7 : opts.seed);
+  this.nodes = []; this.byId = new Map(); this.edgeRefs = [];
+  this.alpha = 0; this.running = false;
+};
+TT.Force.prototype.setGraph = function (courses, edges) {
+  const W = this.W, H = this.H, self = this;
+  const prev = this.byId; const fresh = prev.size === 0;
+  const byId = new Map(); const nodes = [];
+  const ordered = courses.slice().sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : (a.section < b.section ? -1 : 1); });
+  const n = ordered.length, r0 = 0.36 * Math.min(W, H);
+  ordered.forEach(function (c, i) {
+    let nd = prev.get(c.id);
+    if (!nd) {
+      let x, y;
+      if (fresh) { const ang = (2 * Math.PI * i) / Math.max(n, 1) - Math.PI / 2; x = W / 2 + r0 * Math.cos(ang) + (self.rand() - .5) * 20; y = H / 2 + r0 * Math.sin(ang) + (self.rand() - .5) * 20; }
+      else { x = W / 2 + (self.rand() - .5) * 80; y = H / 2 + (self.rand() - .5) * 80; }
+      nd = { id: c.id, x: x, y: y, vx: 0, vy: 0, fx: null, fy: null };
+    }
+    byId.set(c.id, nd); nodes.push(nd);
+  });
+  this.nodes = nodes; this.byId = byId;
+  this.edgeRefs = (edges || []).map(function (e) { return [byId.get(e.a), byId.get(e.b)]; }).filter(function (p) { return p[0] && p[1]; });
+  this.gravity = this.K_GRAVITY * Math.min(1.6, Math.sqrt(12 / Math.max(n, 1)) + 0.3);
+  this.repel = this.K_REPEL * Math.min(1, 16 / Math.max(n, 1));
+};
+TT.Force.prototype.reheat = function (a) { this.alpha = Math.max(this.alpha, a == null ? 1 : a); this.running = this.nodes.length > 0; };
+TT.Force.prototype.pin = function (id, x, y) { const nd = this.byId.get(id); if (nd) { nd.fx = x; nd.fy = y; nd.x = x; nd.y = y; nd.vx = nd.vy = 0; } };
+TT.Force.prototype.unpin = function (id) { const nd = this.byId.get(id); if (nd) { nd.fx = nd.fy = null; } };
+TT.Force.prototype.positions = function () { const m = new Map(); this.nodes.forEach(function (nd) { m.set(nd.id, { x: nd.x, y: nd.y }); }); return m; };
+TT.Force.prototype.step = function () {
+  const nodes = this.nodes, n = nodes.length, W = this.W, H = this.H, PAD = this.PAD, R = this.R, alpha = this.alpha;
+  if (!this.running || n === 0) { this.running = false; return; }
+  for (let i = 0; i < n; i++) { nodes[i].ax = 0; nodes[i].ay = 0; }
+  const minD = 2 * R + 8;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const a = nodes[i], b = nodes[j];
+    let dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
+    if (d2 < 1) { dx = (this.rand() - .5) * 2; dy = (this.rand() - .5) * 2; d2 = dx * dx + dy * dy || 1; }
+    const d = Math.sqrt(d2);
+    let f = Math.min((this.repel || this.K_REPEL) / d2, 4);
+    if (d < minD) f += (minD - d) * this.K_COLLIDE;
+    const ux = dx / d, uy = dy / d;
+    a.ax -= f * ux; a.ay -= f * uy; b.ax += f * ux; b.ay += f * uy;
+  }
+  for (let k = 0; k < this.edgeRefs.length; k++) {
+    const a = this.edgeRefs[k][0], b = this.edgeRefs[k][1];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = this.K_SPRING * (d - this.L_EDGE);
+    a.ax += f * dx / d; a.ay += f * dy / d; b.ax -= f * dx / d; b.ay -= f * dy / d;
+  }
+  const g = this.gravity || this.K_GRAVITY;
+  for (let i = 0; i < n; i++) {
+    const nd = nodes[i];
+    if (nd.fx != null) { nd.x = nd.fx; nd.y = nd.fy; nd.vx = nd.vy = 0; continue; }
+    nd.ax += (W / 2 - nd.x) * g; nd.ay += (H / 2 - nd.y) * g;
+    nd.vx = (nd.vx + nd.ax * alpha) * this.DAMPING; nd.vy = (nd.vy + nd.ay * alpha) * this.DAMPING;
+    const v = Math.sqrt(nd.vx * nd.vx + nd.vy * nd.vy);
+    if (v > this.MAX_V) { nd.vx *= this.MAX_V / v; nd.vy *= this.MAX_V / v; }
+    nd.x += nd.vx; nd.y += nd.vy;
+    if (nd.x < PAD) { nd.x = PAD; nd.vx = 0; } else if (nd.x > W - PAD) { nd.x = W - PAD; nd.vx = 0; }
+    if (nd.y < PAD) { nd.y = PAD; nd.vy = 0; } else if (nd.y > H - PAD) { nd.y = H - PAD; nd.vy = 0; }
+  }
+  this.alpha *= (1 - this.ALPHA_DECAY);
+  if (this.alpha < this.ALPHA_MIN) { this.alpha = 0; this.running = false; }
+};
+
+// ---------- 내장 샘플 ----------
+const SAMPLE_RAW = [
+  { id: 'c-s01', name: '자료구조', section: '01', professor: '김민수', credits: 3, room: '공학관 301', slots: [{ day: '월', start: '09:00', end: '10:15' }, { day: '수', start: '09:00', end: '10:15' }] },
+  { id: 'c-s02', name: '자료구조', section: '02', professor: '김민수', credits: 3, room: '공학관 301', slots: [{ day: '화', start: '13:30', end: '14:45' }, { day: '목', start: '13:30', end: '14:45' }] },
+  { id: 'c-s03', name: '알고리즘', section: '01', professor: '이서연', credits: 3, room: '공학관 302', slots: [{ day: '월', start: '10:30', end: '11:45' }, { day: '수', start: '10:30', end: '11:45' }] },
+  { id: 'c-s04', name: '알고리즘', section: '02', professor: '이서연', credits: 3, room: '공학관 302', slots: [{ day: '화', start: '10:15', end: '11:30' }, { day: '목', start: '10:15', end: '11:30' }] },
+  { id: 'c-s05', name: '운영체제', section: '01', professor: '박지훈', credits: 3, room: '공학관 401', slots: [{ day: '월', start: '13:30', end: '14:45' }, { day: '수', start: '13:30', end: '14:45' }] },
+  { id: 'c-s06', name: '컴퓨터구조', section: '01', professor: '최유진', credits: 3, room: '공학관 305', slots: [{ day: '화', start: '09:00', end: '10:15' }, { day: '목', start: '09:00', end: '10:15' }] },
+  { id: 'c-s07', name: '데이터베이스', section: '01', professor: '정하늘', credits: 3, room: '공학관 402', slots: [{ day: '화', start: '15:00', end: '16:15' }, { day: '목', start: '15:00', end: '16:15' }] },
+  { id: 'c-s08', name: '컴퓨터네트워크', section: '01', professor: '한동훈', credits: 3, room: '공학관 403', slots: [{ day: '월', start: '14:30', end: '15:45' }, { day: '수', start: '14:30', end: '15:45' }] },
+  { id: 'c-s09', name: '소프트웨어공학', section: '01', professor: '오세영', credits: 3, room: '공학관 404', slots: [{ day: '화', start: '13:30', end: '14:45' }, { day: '목', start: '13:30', end: '14:45' }] },
+  { id: 'c-s10', name: '이산수학', section: '01', professor: '윤지아', credits: 3, room: '자연관 201', slots: [{ day: '월', start: '09:30', end: '10:45' }, { day: '수', start: '09:30', end: '10:45' }] },
+  { id: 'c-s11', name: '프로그래밍언어론', section: '01', professor: '강도윤', credits: 3, room: '공학관 306', slots: [{ day: '월', start: '10:00', end: '11:15' }] },
+  { id: 'c-s12', name: '캡스톤디자인', section: '01', professor: '박지훈', credits: 3, room: '공학관 실습실', slots: [{ day: '금', start: '13:00', end: '16:00' }] },
+  { id: 'c-s13', name: '오픈소스SW', section: '01', professor: '김민수', credits: 2, room: '공학관 실습실', slots: [{ day: '목', start: '15:00', end: '16:50' }] },
+  { id: 'c-s14', name: '인공지능개론', section: '01', professor: '서준호', credits: 3, room: '공학관 405', slots: [{ day: '화', start: '16:30', end: '17:45' }, { day: '목', start: '16:30', end: '17:45' }] }
+];
+TT.sampleCourses = function () {
+  return SAMPLE_RAW.map(function (raw) { const n = TT.normalizeCourse(raw); if (!n.ok) throw new Error('sample invalid: ' + n.errors.join(', ')); return n.course; });
+};
+
+global.TT = TT;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+
+<!-- ======================================================================
+     tt-tests : 자체 테스트. index.html#selftest 로 열면 결과 표를 렌더.
+     ====================================================================== -->
+<script id="tt-tests">
+(function (global) {
+'use strict';
+const TT = global.TT;
+const norm = function (x) {
+  if (x instanceof Set) return Array.from(x);
+  if (x instanceof Map) return Array.from(x.entries());
+  return x;
+};
+const js = function (x) { return JSON.stringify(norm(x)); };
+
+TT.runSelfTests = function () {
+  const results = [];
+  let cur = null;
+  const t = function (name, fn) {
+    cur = { name: name, pass: true, detail: [] };
+    try { fn(); } catch (e) { cur.pass = false; cur.detail.push('예외: ' + (e && e.stack || e)); }
+    results.push(cur);
+  };
+  const ok = function (cond, msg) { if (!cond) { cur.pass = false; cur.detail.push('실패: ' + msg); } };
+  const eq = function (a, b, msg) { const A = js(a), B = js(b); if (A !== B) { cur.pass = false; cur.detail.push('불일치: ' + (msg || '') + '\n  기대 ' + B + '\n  실제 ' + A); } };
+  const C = function (id, name, section, slots, extra) {
+    const raw = Object.assign({ id: id, name: name, section: section, slots: slots }, extra || {});
+    const n = TT.normalizeCourse(raw); if (!n.ok) throw new Error('fixture invalid: ' + n.errors.join(', '));
+    return n.course;
+  };
+  const S = function (day, start, end) { return { day: day, start: start, end: end }; };
+
+  t('parseTime 정상 입력', function () {
+    eq(TT.parseTime('09:00'), 540); eq(TT.parseTime('9:05'), 545); eq(TT.parseTime('23:59'), 1439);
+    eq(TT.parseTime('9:00:00'), 540); eq(TT.parseTime(' 10:30 '), 630); eq(TT.parseTime(600), 600);
+  });
+  t('parseTime 오류 입력 거부', function () {
+    ['24:00', '9', '09:60', '', 'ab:cd', '0900', '-1:00', null, undefined].forEach(function (v) { ok(TT.parseTime(v) === null, String(v)); });
+    ok(TT.parseTime(1440) === null, '1440'); ok(TT.parseTime(1.5) === null, '1.5');
+  });
+  t('formatTime / 라운드트립', function () {
+    eq(TT.formatTime(540), '09:00'); eq(TT.formatTime(5), '00:05'); eq(TT.formatTime(1439), '23:59');
+    for (let m = 0; m < 1440; m += 37) eq(TT.parseTime(TT.formatTime(m)), m, 'm=' + m);
+  });
+  t('parseDay 다양한 표기', function () {
+    eq(TT.parseDay('월'), 1); eq(TT.parseDay('월요일'), 1); eq(TT.parseDay('일'), 7); eq(TT.parseDay(3), 3); eq(TT.parseDay('3'), 3);
+    eq(TT.parseDay('Mon'), 1); eq(TT.parseDay('tue'), 2); eq(TT.parseDay('SUNDAY'), 7); eq(TT.parseDay(' 금 '), 5);
+    ['달', 0, 8, '', '8', 'xyz', null, '월화', 2.5].forEach(function (v) { ok(TT.parseDay(v) === null, String(v)); });
+  });
+  t('sectionKey / courseKey', function () {
+    eq(TT.sectionKey('01'), TT.sectionKey('1')); eq(TT.sectionKey(' 1 '), TT.sectionKey('001'));
+    eq(TT.sectionKey('A'), TT.sectionKey('a')); ok(TT.sectionKey('A') !== TT.sectionKey('B'), 'A≠B');
+    eq(TT.courseKey({ name: ' 자료구조 ', section: '01' }), TT.courseKey({ name: '자료구조', section: '1' }));
+    ok(TT.courseKey({ name: '자료구조', section: '01' }) !== TT.courseKey({ name: '자료구조', section: '02' }), '분반 다르면 키 다름');
+  });
+  t('slotsOverlap / slotIntersection', function () {
+    ok(!TT.slotsOverlap(S(1, '10:00', '11:00'), S(1, '11:00', '12:00')), '연속 수업은 겹치지 않음');
+    ok(TT.slotsOverlap(S(1, '10:00', '11:00'), S(1, '10:30', '11:30')), '부분 겹침');
+    ok(TT.slotsOverlap(S(1, '10:00', '11:00'), S(1, '10:00', '11:00')), '동일');
+    ok(TT.slotsOverlap(S(1, '09:00', '12:00'), S(1, '10:00', '11:00')), '포함');
+    ok(!TT.slotsOverlap(S(1, '10:00', '11:00'), S(2, '10:00', '11:00')), '다른 요일');
+    eq(TT.slotIntersection(S(1, '10:00', '11:00'), S(1, '10:30', '11:30')), { day: 1, start: '10:30', end: '11:00' });
+    ok(TT.slotIntersection(S(1, '10:00', '11:00'), S(1, '11:00', '12:00')) === null, '연속 → null');
+  });
+  t('normalizeSlot 검증', function () {
+    ok(!TT.normalizeSlot(S('월', '10:00', '10:00')).ok, 'end==start');
+    ok(!TT.normalizeSlot(S('월', '11:00', '10:00')).ok, 'end<start');
+    ok(!TT.normalizeSlot(S('월', '22:00', '01:00')).ok, '자정 넘김');
+    ok(!TT.normalizeSlot(S('달', '10:00', '11:00')).ok, '요일 오류');
+    ok(!TT.normalizeSlot(S('월', '10:00', '24:00')).ok, '24:00');
+    eq(TT.normalizeSlot(S(2, '9:00', '10:15')), { ok: true, slot: { day: 2, start: '09:00', end: '10:15' } });
+  });
+  t('normalizeCourse 검증', function () {
+    const a = TT.normalizeCourse({ name: '  자료구조 ', credits: '3', slots: [S('수', '9:00', '10:15'), S('월', '9:00', '10:15')] });
+    ok(a.ok, a.errors.join(',')); eq(a.course.name, '자료구조'); eq(a.course.section, '01'); eq(a.course.credits, 3);
+    eq(a.course.slots.map(function (s) { return s.day; }), [1, 3], '요일순 정렬'); ok(/^c-/.test(a.course.id), 'id 생성');
+    ok(!TT.normalizeCourse({ name: '', slots: [] }).ok, '빈 이름');
+    ok(!TT.normalizeCourse({ name: 'x', credits: 'abc' }).ok, '학점 문자열');
+    eq(TT.normalizeCourse({ name: 'x', credits: '' }).course.credits, null, '빈 학점 → null');
+    eq(TT.normalizeCourse({ name: 'x' }).course.slots, [], 'slots 누락 → []');
+    const ov = TT.normalizeCourse({ name: 'x', slots: [S('월', '09:00', '10:00'), S('월', '09:30', '10:30')] });
+    ok(!ov.ok && /겹칩/.test(ov.errors.join()), '과목 내 겹침');
+    eq(TT.normalizeCourse({ id: 'keep', name: 'x' }).course.id, 'keep', 'id 유지');
+    eq(TT.normalizeCourse({ name: '한글'.normalize('NFD') }).course.name, '한글', 'NFC 정규화');
+  });
+  t('conflict 규칙', function () {
+    const a = C('a', '자료구조', '01', [S('월', '09:00', '10:15')]);
+    const b = C('b', '자료구조', '02', [S('화', '09:00', '10:15')]);
+    const c = C('c', '알고리즘', '01', [S('월', '10:00', '11:15')]);
+    const d = C('d', '운영체제', '01', [S('월', '10:15', '11:30')]);
+    const e = C('e', '자료구조', '03', [S('월', '10:00', '11:00')]);
+    eq(TT.conflict(a, b), { section: true, overlaps: [] }, '분반');
+    const ac = TT.conflict(a, c); ok(ac && !ac.section && ac.overlaps.length === 1, '시간 간선'); eq(ac.overlaps[0].start, '10:00'); eq(ac.overlaps[0].end, '10:15'); eq(ac.overlaps[0].day, 1);
+    ok(TT.conflict(a, d) === null, '연속 수업 → null');
+    const ae = TT.conflict(a, e); ok(ae && ae.section && ae.overlaps.length === 1, '분반+시간 동시');
+    ok(TT.conflict(a, a) === null, '자기 자신');
+  });
+  t('buildGraph 구조', function () {
+    const cs = [C('a', 'A', '01', [S('월', '09:00', '10:00')]), C('b', 'A', '02', [S('월', '09:30', '10:30')]),
+      C('c', 'B', '01', [S('월', '09:45', '10:45')]), C('d', 'C', '01', [S('화', '09:00', '10:00')]), C('e', 'D', '01', [])];
+    const g = TT.buildGraph(cs);
+    eq(g.edges.length, 3, '간선 수'); // a-b(분반+시간), a-c, b-c
+    eq(TT.neighbors(g, 'a').sort(), ['b', 'c']); eq(TT.neighbors(g, 'd'), []); eq(TT.neighbors(g, 'e'), []);
+    ok(g.adj.get('a').get('b') === g.adj.get('b').get('a'), '대칭');
+    ok(g.adj.get('a').get('b').section === true && g.adj.get('a').get('c').section === false, '플래그');
+    ok(!g.adj.get('a').has('a'), '자기 간선 없음');
+  });
+  const fixture = function () {
+    // A-B, B-C, C-D (경로), E 고립
+    return TT.buildGraph([
+      C('A', 'A', '01', [S('월', '09:00', '10:00')]), C('B', 'B', '01', [S('월', '09:30', '10:30')]),
+      C('C', 'C', '01', [S('월', '10:15', '11:15')]), C('D', 'D', '01', [S('월', '11:00', '12:00')]),
+      C('E', 'E', '01', [S('금', '09:00', '10:00')])
+    ]);
+  };
+  t('selectionState / canSelect', function () {
+    const g = fixture(); const st = TT.selectionState(g, new Set(['B']));
+    eq(Array.from(st.blocked.keys()).sort(), ['A', 'C']); eq(st.blocked.get('A'), ['B']);
+    ok(TT.canSelect(g, new Set(['B']), 'D'), 'D 선택 가능'); ok(!TT.canSelect(g, new Set(['B']), 'A'), 'A 잠김');
+    ok(!TT.canSelect(g, new Set(['B']), 'B'), '이미 선택'); ok(!TT.canSelect(g, new Set(), 'Z'), '없는 id');
+  });
+  t('toggleSelect 및 이중 차단 연쇄', function () {
+    const g = fixture();
+    let r = TT.toggleSelect(g, new Set(), 'A'); ok(r.changed, '선택'); eq(r.selected, ['A']);
+    r = TT.toggleSelect(g, r.selected, 'C'); eq(r.selected, ['A', 'C']);
+    const blockedTry = TT.toggleSelect(g, r.selected, 'B'); ok(!blockedTry.changed && /A 01/.test(blockedTry.reason) && /C 01/.test(blockedTry.reason), '잠긴 노드 거부 + 이유');
+    ok(blockedTry.selected === r.selected, '거부 시 같은 Set 반환');
+    r = TT.toggleSelect(g, r.selected, 'A'); eq(r.selected, ['C']); ok(!TT.canSelect(g, r.selected, 'B'), 'C 남아 B 여전히 잠김');
+    r = TT.toggleSelect(g, r.selected, 'C'); eq(r.selected, []); ok(TT.canSelect(g, r.selected, 'B'), '모두 해제 → B 가능');
+    ok(!TT.toggleSelect(g, new Set(), 'Z').changed, '없는 id');
+  });
+  t('pruneSelection', function () {
+    const g = fixture();
+    let r = TT.pruneSelection(g, new Set(['A', 'Z'])); eq(r.selected, ['A']); eq(r.dropped, [{ id: 'Z', because: null }]);
+    r = TT.pruneSelection(g, new Set(['A', 'B'])); eq(r.selected, ['A']); eq(r.dropped, [{ id: 'B', because: 'A' }], '나중 선택 제거');
+    r = TT.pruneSelection(g, new Set(['A', 'B']), { preferDrop: ['A'] }); eq(r.selected, ['B']); eq(r.dropped[0].id, 'A', 'preferDrop 우선');
+    r = TT.pruneSelection(g, new Set(['A', 'B', 'C', 'D', 'E'])); eq(r.selected, ['A', 'C', 'E']);
+  });
+  t('explainBlock 문구', function () {
+    const g = TT.buildGraph([C('a', '알고리즘', '01', [S('월', '09:00', '10:15')]), C('b', '자료구조', '01', [S('월', '10:00', '11:15')]), C('c', '자료구조', '02', [])]);
+    const ex = TT.explainBlock(g, new Set(['a', 'c']), 'b');
+    eq(ex.length, 2); eq(ex[0].blockerId, 'a'); ok(/알고리즘 01: 월 10:00–10:15 겹침/.test(ex[0].text), ex[0].text);
+    ok(/자료구조 02: 같은 과목의 다른 분반/.test(ex[1].text), ex[1].text);
+  });
+  t('parseCSV 인용/개행/BOM', function () {
+    const r = TT.parseCSV('﻿a,b\r\n"x, y","q""z"\n\n"multi\nline",last\n');
+    eq(r.rows, [['a', 'b'], ['x, y', 'q"z'], [''], ['multi\nline', 'last']]);
+    eq(r.lines, [1, 2, 3, 4]);
+    eq(TT.parseCSV('').rows, []); eq(TT.parseCSV('a,b').rows, [['a', 'b']]);
+  });
+  t('coursesFromCSV 병합/별칭/오류', function () {
+    const csv = ['과목명,분반,교수,학점,요일,시작,종료',
+      '자료구조,01,김민수,3,월,09:00,10:15', '자료구조,1,,,수,09:00,10:15', '자료구조,01,,,월,09:00,10:15',
+      '알고리즘,02,,3,2,13:30,14:45', '사이버윤리,,,1,,,', ',01,,,월,09:00,10:00', '오류과목,01,,,월,10:00,09:00',
+      '반쪽,01,,,월,,', '자료구조,02,,3,화,09:00,10:15'].join('\r\n');
+    const r = TT.coursesFromCSV(csv);
+    eq(r.courses.length, 4, '과목 수: ' + JSON.stringify(r.courses.map(TT.courseLabel)));
+    const ds = r.courses[0]; eq(ds.name, '자료구조'); eq(ds.section, '01'); eq(ds.professor, '김민수'); eq(ds.credits, 3);
+    eq(ds.slots.length, 2, '01/1 병합 + 중복 슬롯 제거'); eq(ds.slots[1].day, 3);
+    eq(r.courses[1].slots[0].day, 2, '숫자 요일'); eq(r.courses[1].section, '02');
+    eq(r.courses[2].name, '사이버윤리'); eq(r.courses[2].slots, [], '시간 미정'); eq(r.courses[2].section, '01', '분반 기본값');
+    eq(r.errors.map(function (e) { return e.line; }), [7, 8, 9], '오류 행 번호');
+    ok(/과목명이 비어/.test(r.errors[0].message) && /늦어야/.test(r.errors[1].message) && /모두/.test(r.errors[2].message), r.errors.map(function (e) { return e.message; }).join('|'));
+    const noName = TT.coursesFromCSV('x,y\n1,2'); eq(noName.courses, []); ok(/과목명\(name\)/.test(noName.errors[0].message), '헤더 없음');
+    eq(TT.coursesFromCSV('').errors[0].message, '비어 있는 파일입니다');
+    const en = TT.coursesFromCSV('name,section,day,start,end\nOS,01,Mon,9:00,10:00'); eq(en.courses[0].slots[0], { day: 1, start: '09:00', end: '10:00' }, '영문 헤더/요일');
+  });
+  t('coursesFromJSON 관용 파싱', function () {
+    const bare = TT.coursesFromJSON('[{"name":"A","slots":[{"day":"월","start":"9:00","end":"10:00"}]},{"name":"B"}]');
+    eq(bare.errors, []); eq(bare.courses.length, 2); ok(bare.courses[0].id !== bare.courses[1].id, 'id 생성·유일'); eq(bare.courses[1].slots, []);
+    const dup = TT.coursesFromJSON('{"courses":[{"id":"x","name":"A","section":"01"},{"id":"y","name":"A","section":"1"},{"id":"x","name":"C"}],"selected":["x","nope"]}');
+    eq(dup.courses.length, 2); ok(dup.warnings.some(function (w) { return /중복/.test(w); }), '중복 경고'); ok(dup.courses[1].id !== 'x', 'id 중복 → 새 id');
+    eq(dup.selected, ['x']);
+    const bad = TT.coursesFromJSON('{nope'); eq(bad.courses, []); ok(/JSON 형식/.test(bad.errors[0].message), '잘못된 JSON');
+    const noArr = TT.coursesFromJSON('{"foo":1}'); ok(/courses/.test(noArr.errors[0].message), 'courses 없음');
+    const conf = TT.coursesFromJSON('{"courses":[{"id":"a","name":"A","slots":[{"day":1,"start":"09:00","end":"10:00"}]},{"id":"b","name":"B","slots":[{"day":1,"start":"09:30","end":"10:30"}]}],"selected":["a","b"]}');
+    eq(conf.selected, ['a'], '충돌 선택 정리'); ok(conf.warnings.some(function (w) { return /해제/.test(w); }), '해제 경고');
+    const inv = TT.coursesFromJSON('[{"name":""}]'); eq(inv.courses, []); eq(inv.errors[0].line, 1);
+  });
+  t('toJSON ↔ coursesFromJSON 라운드트립', function () {
+    const cs = TT.sampleCourses(); const sel = new Set(['c-s01', 'c-s04']);
+    const txt = TT.toJSON(cs, sel, { now: '2026-01-01T00:00:00.000Z' });
+    const doc = JSON.parse(txt); eq(doc.format, 'timetable-graph'); eq(doc.version, 1); eq(doc.courses[0].slots[0].day, '월', '한글 요일로 출력');
+    const back = TT.coursesFromJSON(txt); eq(back.errors, []); eq(back.warnings, []); eq(back.courses, cs); eq(back.selected, ['c-s01', 'c-s04']);
+  });
+  t('toCSV ↔ coursesFromCSV 라운드트립', function () {
+    const cs = TT.sampleCourses().concat([C('z', '따옴표,과목', 'A', [], { professor: 'He said "hi"' })]);
+    const csv = TT.toCSV(cs); ok(csv.charCodeAt(0) === 0xFEFF, 'BOM');
+    const back = TT.coursesFromCSV(csv); eq(back.errors, []);
+    const strip = function (c) { return { name: c.name, section: c.section, professor: c.professor, credits: c.credits, room: c.room, slots: c.slots }; };
+    eq(back.courses.map(strip), cs.map(strip));
+  });
+  t('importAny 형식 감지', function () {
+    eq(TT.sniffFormat('﻿  \n {"courses":[]}'), 'json'); eq(TT.sniffFormat('[]'), 'json'); eq(TT.sniffFormat('name,day\n'), 'csv');
+    eq(TT.importAny('[]').format, 'json'); eq(TT.importAny('name\nA').format, 'csv'); eq(TT.importAny('name\nA').selected, []);
+  });
+  t('timeRange / daysNeeded', function () {
+    eq(TT.timeRange([]), { startMin: 540, endMin: 1080 });
+    eq(TT.timeRange([C('a', 'A', '01', [S('월', '08:30', '09:45')])]), { startMin: 480, endMin: 1080 });
+    eq(TT.timeRange([C('a', 'A', '01', [S('월', '18:10', '19:10')])]), { startMin: 540, endMin: 1200 });
+    eq(TT.timeRange([C('a', 'A', '01', [S('월', '10:00', '11:00')])]), { startMin: 540, endMin: 1080 }, '기본보다 좁아지지 않음');
+    eq(TT.daysNeeded([]), [1, 2, 3, 4, 5]); eq(TT.daysNeeded([C('a', 'A', '01', [S('토', '10:00', '11:00')])]), [1, 2, 3, 4, 5, 6]);
+    eq(TT.daysNeeded([C('a', 'A', '01', [S('일', '10:00', '11:00')])]).length, 7);
+  });
+  t('assignColors', function () {
+    const m = TT.assignColors(['A', 'B', 'A']); eq(m.get('A'), 0); eq(m.get('B'), 1);
+    const m2 = TT.assignColors(['B', 'C', 'A'], m); eq(m2.get('A'), 0); eq(m2.get('B'), 1); eq(m2.get('C'), 2, '기존 유지 + 최소 사용');
+    const many = []; for (let i = 0; i < 30; i++) many.push('N' + i);
+    const m3 = TT.assignColors(many); ok(m3.size === 30, '30개'); ok(Array.from(m3.values()).every(function (v) { return v >= 0 && v < TT.PALETTE.length; }), '범위');
+  });
+  t('uid / totalCredits', function () {
+    const s = new Set(); for (let i = 0; i < 1000; i++) s.add(TT.uid()); eq(s.size, 1000);
+    const cs = [C('a', 'A', '01', [], { credits: 3 }), C('b', 'B', '01', [], { credits: 1.5 }), C('c', 'C', '01', [])];
+    eq(TT.totalCredits(cs, new Set(['a', 'b', 'c'])), 4.5); eq(TT.totalCredits(cs, new Set(['c'])), 0); eq(TT.totalCredits(cs, new Set()), 0);
+  });
+  t('샘플 데이터 요구사항', function () {
+    const cs = TT.sampleCourses(); const g = TT.buildGraph(cs);
+    ok(cs.length >= 12, '12과목 이상'); eq(new Set(cs.map(TT.courseKey)).size, cs.length, '중복 키 없음'); eq(new Set(cs.map(function (c) { return c.id; })).size, cs.length, 'id 유일');
+    const names = {}; cs.forEach(function (c) { names[c.name] = (names[c.name] || 0) + 1; });
+    ok(Object.values(names).filter(function (n) { return n >= 2; }).length >= 2, '분반 2개인 과목 2개 이상');
+    ok(g.edges.filter(function (e) { return e.overlaps.length; }).length >= 4, '시간 간선 4개 이상');
+    ok(g.edges.filter(function (e) { return e.section; }).length >= 2, '분반 간선 2개 이상');
+    ok(cs.some(function (c) { return TT.neighbors(g, c.id).length === 0; }), '고립 노드');
+    ok(!g.adj.get('c-s06').has('c-s04'), '연속 수업(컴퓨터구조–알고리즘02)은 간선 아님');
+    ok(g.adj.get('c-s01').has('c-s10') && g.adj.get('c-s10').has('c-s11') && g.adj.get('c-s01').has('c-s11'), '삼각형');
+    const tr = TT.timeRange(cs); eq(tr, { startMin: 540, endMin: 1080 }, '기본 범위 안'); eq(TT.daysNeeded(cs), [1, 2, 3, 4, 5]);
+    ok(cs.every(function (c) { return typeof c.credits === 'number' && c.professor; }), '학점·교수');
+  });
+  t('Force 안정성 / 결정성', function () {
+    const cs = TT.sampleCourses(); const g = TT.buildGraph(cs);
+    const run = function () { const f = new TT.Force({ seed: 3 }); f.setGraph(cs, g.edges); f.reheat(1); let n = 0; while (f.running && n < 2000) { f.step(); n++; } return { f: f, n: n }; };
+    const r1 = run(), f = r1.f;
+    ok(!f.running, '정지'); ok(r1.n < 600, '600틱 안에 정지 (' + r1.n + ')');
+    let minD = Infinity;
+    f.nodes.forEach(function (a) { ok(Number.isFinite(a.x) && Number.isFinite(a.y), '유한'); ok(a.x >= f.PAD && a.x <= f.W - f.PAD && a.y >= f.PAD && a.y <= f.H - f.PAD, '경계 안'); });
+    for (let i = 0; i < f.nodes.length; i++) for (let j = i + 1; j < f.nodes.length; j++) { const dx = f.nodes[i].x - f.nodes[j].x, dy = f.nodes[i].y - f.nodes[j].y; minD = Math.min(minD, Math.hypot(dx, dy)); }
+    ok(minD > 2 * f.R, '최소 거리 ' + minD.toFixed(1) + ' > ' + 2 * f.R);
+    let eSum = 0, eN = 0, nSum = 0, nN = 0;
+    for (let i = 0; i < f.nodes.length; i++) for (let j = i + 1; j < f.nodes.length; j++) {
+      const d = Math.hypot(f.nodes[i].x - f.nodes[j].x, f.nodes[i].y - f.nodes[j].y);
+      if (g.adj.get(f.nodes[i].id).has(f.nodes[j].id)) { eSum += d; eN++; } else { nSum += d; nN++; }
+    }
+    ok(eSum / eN < nSum / nN, '간선 평균 길이 < 비간선 평균 거리');
+    const r2 = run(); eq(r2.f.positions(), f.positions(), '같은 시드 → 같은 위치');
+    const f2 = new TT.Force({ seed: 3 }); f2.setGraph(cs, g.edges); f2.reheat(1); f2.step(); f2.pin('c-s01', 100, 100); f2.step();
+    eq(f2.byId.get('c-s01').x, 100, '고정'); f2.unpin('c-s01'); ok(f2.byId.get('c-s01').fx === null, '고정 해제');
+    const f3 = new TT.Force({ seed: 1 }); f3.setGraph(cs.slice(0, 3), []); const p = f3.byId.get('c-s01').x; f3.setGraph(cs, g.edges); eq(f3.byId.get('c-s01').x, p, '기존 위치 유지');
+    const f4 = new TT.Force(); f4.setGraph([], []); f4.reheat(1); f4.step(); ok(!f4.running, '빈 그래프');
+  });
+  return results;
+};
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+
+<!-- ======================================================================
+     tt-app : UI (DOM). window.app 으로 노출.
+     ====================================================================== -->
+<script id="tt-app">
+(function () {
+'use strict';
+const TT = window.TT;
+const $ = (sel, root) => (root || document).querySelector(sel);
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const STORAGE_KEY = 'timetable-graph:v1';
+const THEME_KEY = 'timetable-graph:theme';
+
+function h(tag, attrs, ...children) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    const v = attrs[k]; if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'style') e.style.cssText = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (k === 'dataset') Object.assign(e.dataset, v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  children.flat(Infinity).forEach(c => { if (c == null || c === false) return; e.append(c.nodeType ? c : document.createTextNode(String(c))); });
+  return e;
+}
+function svg(tag, attrs) { const e = document.createElementNS(SVG_NS, tag); if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+const hueOf = c => TT.PALETTE[store.colors.get(c.name) || 0];
+const shortName = n => n.length > 9 ? n.slice(0, 8) + '…' : n;
+const ymd = () => { const d = new Date(); return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'); };
+
+// ---------- 테마 ----------
+try { const t = localStorage.getItem(THEME_KEY); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+function currentTheme() {
+  const t = document.documentElement.dataset.theme; if (t) return t;
+  return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+// ---------- 자체 테스트 모드 ----------
+window.addEventListener('hashchange', () => location.reload());
+if (location.hash === '#selftest') {
+  $('.topbar').hidden = true; $('#app-root').hidden = true;
+  const box = $('#selftest'); box.hidden = false;
+  const results = TT.runSelfTests();
+  const pass = results.filter(r => r.pass).length, fail = results.length - pass;
+  document.title = `자체 테스트 ${pass}/${results.length} 통과`;
+  box.append(
+    h('h2', null, `자체 테스트: ${pass}/${results.length} 통과`, fail ? ` (실패 ${fail})` : ''),
+    h('p', { style: 'color:var(--muted);font-size:13px' }, '주소의 #selftest 를 지우면 앱으로 돌아갑니다.'),
+    h('table', null,
+      h('thead', null, h('tr', null, h('th', null, '결과'), h('th', null, '테스트'), h('th', null, '상세'))),
+      h('tbody', null, results.map(r => h('tr', { class: r.pass ? 'pass' : 'fail' },
+        h('td', null, r.pass ? 'PASS' : 'FAIL'), h('td', null, r.name), h('td', null, h('pre', null, r.detail.join('\n'))))))));
+  window.__selftest = { pass, fail, results };
+  return;
+}
+
+// ---------- Toast / Tooltip ----------
+const toastWrap = $('#toast-wrap');
+function toast(msg, opts = {}) {
+  const details = (opts.details || []).filter(Boolean);
+  const node = h('div', { class: 'toast' + (opts.type === 'error' ? ' error' : '') }, msg,
+    details.length ? h('details', null, h('summary', null, `자세히 (${details.length})`), h('ul', null, details.map(d => h('li', null, d)))) : null);
+  toastWrap.append(node);
+  setTimeout(() => node.remove(), details.length ? 9000 : 4000);
+  return node;
+}
+const tooltip = {
+  el: $('#tooltip'),
+  show(content, x, y) { this.el.replaceChildren(...[].concat(content)); this.el.hidden = false; this.move(x, y); },
+  move(x, y) {
+    const r = this.el.getBoundingClientRect(); let left = x + 14, top = y + 14;
+    if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+    if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+    this.el.style.left = Math.max(4, left) + 'px'; this.el.style.top = Math.max(4, top) + 'px';
+  },
+  hide() { this.el.hidden = true; }
+};
+function courseTooltip(id) {
+  const c = store.graph.byId.get(id); if (!c) return [];
+  const meta = [c.professor, typeof c.credits === 'number' ? c.credits + '학점' : null, c.room].filter(Boolean).join(' · ');
+  const out = [h('div', { class: 'tt-title' }, TT.courseLabel(c))];
+  if (meta) out.push(h('div', { class: 'tt-sub' }, meta));
+  out.push(h('div', { class: 'tt-sub' }, c.slots.length ? c.slots.map(TT.slotText).join(', ') : '시간 미정'));
+  if (store.selected.has(id)) out.push(h('div', { class: 'tt-ok' }, '선택됨 · 클릭하면 해제'));
+  else if (store.state.blocked.has(id)) {
+    out.push(h('div', { class: 'tt-why' }, '선택 불가 — 선택한 수업과 충돌:', h('ul', null, TT.explainBlock(store.graph, store.selected, id).map(x => h('li', null, x.text)))));
+  } else out.push(h('div', { class: 'tt-ok' }, '클릭하여 선택'));
+  return out;
+}
+
+// ---------- Store ----------
+const store = {
+  courses: [], selected: new Set(), hoverId: null, colors: new Map(), graph: TT.buildGraph([]), state: null, listeners: [],
+  subscribe(fn) { this.listeners.push(fn); },
+  emit(type) { this.listeners.forEach(fn => fn(type)); },
+  recompute(opts) {
+    this.graph = TT.buildGraph(this.courses);
+    this.colors = TT.assignColors(this.courses.map(c => c.name), this.colors);
+    const pr = TT.pruneSelection(this.graph, this.selected, opts);
+    this.selected = pr.selected;
+    this.state = TT.selectionState(this.graph, this.selected);
+    if (this.hoverId && !this.graph.byId.has(this.hoverId)) this.hoverId = null;
+    return pr.dropped;
+  },
+  setCourses(list, selectedIds) {
+    this.courses = list.slice(); this.selected = new Set(selectedIds || []); this.hoverId = null;
+    const dropped = this.recompute(); this.emit('data'); this.persist(); return dropped;
+  },
+  addCourse(c) { this.courses.push(c); this.recompute(); this.emit('data'); this.persist(); },
+  updateCourse(id, c) {
+    const i = this.courses.findIndex(x => x.id === id); if (i < 0) return [];
+    this.courses[i] = Object.assign({}, c, { id });
+    const dropped = this.recompute({ preferDrop: [id] }); this.emit('data'); this.persist(); return dropped;
+  },
+  deleteCourse(id) { this.courses = this.courses.filter(c => c.id !== id); this.recompute(); this.emit('data'); this.persist(); },
+  toggleSelect(id) {
+    const r = TT.toggleSelect(this.graph, this.selected, id);
+    if (r.changed) { this.selected = r.selected; this.state = TT.selectionState(this.graph, this.selected); this.emit('selection'); this.persist(); }
+    return r;
+  },
+  clearSelection() { if (!this.selected.size) return; this.selected = new Set(); this.state = TT.selectionState(this.graph, this.selected); this.emit('selection'); this.persist(); },
+  setHover(id) { if (id === this.hoverId) return; this.hoverId = id; this.emit('hover'); },
+  persist() { try { localStorage.setItem(STORAGE_KEY, TT.toJSON(this.courses, this.selected)); } catch (e) {} },
+  load() {
+    try {
+      const s = localStorage.getItem(STORAGE_KEY); if (!s) return false;
+      const r = TT.coursesFromJSON(s); if (!r.courses.length && r.errors.length) return false;
+      this.courses = r.courses; this.selected = new Set(r.selected); this.recompute(); return true;
+    } catch (e) { return false; }
+  },
+  getState() {
+    const blocked = {}; this.state.blocked.forEach((v, k) => { blocked[k] = v.slice(); });
+    return { courses: JSON.parse(JSON.stringify(this.courses)), selected: Array.from(this.selected), blocked, hoverId: this.hoverId, edges: this.graph.edges.map(e => ({ a: e.a, b: e.b, section: e.section, overlaps: e.overlaps.length })) };
+  }
+};
+
+// ---------- Graph view ----------
+const graphView = {
+  svg: $('#graph'), gEdges: $('#g-edges'), gHits: $('#g-edge-hits'), gNodes: $('#g-nodes'), emptyMsg: $('#graph-empty'),
+  sim: new TT.Force({ seed: 7 }), nodeEls: new Map(), edgeEls: [], raf: null, drag: null,
+  init() {
+    store.subscribe(type => {
+      if (type === 'data') this.rebuild();
+      else if (type === 'selection') { this.updateStates(); this.refreshTooltip(); }
+      else if (type === 'hover') this.updateHover();
+    });
+    const s = this.svg;
+    s.addEventListener('pointerdown', e => this.onDown(e));
+    s.addEventListener('pointermove', e => this.onMove(e));
+    s.addEventListener('pointerup', e => this.onUp(e));
+    s.addEventListener('pointercancel', e => this.onUp(e));
+    s.addEventListener('pointerover', e => {
+      const n = e.target.closest('.node'); const hit = e.target.closest('.edge-hit');
+      if (n) { store.setHover(n.dataset.id); tooltip.show(courseTooltip(n.dataset.id), e.clientX, e.clientY); }
+      else if (hit) { const edge = store.graph.edges[+hit.dataset.i]; if (edge) tooltip.show(edgeTooltip(edge), e.clientX, e.clientY); }
+    });
+    s.addEventListener('pointerout', e => {
+      const n = e.target.closest('.node'); const hit = e.target.closest('.edge-hit');
+      if ((n || hit) && !(this.drag && this.drag.moved)) { if (n) store.setHover(null); tooltip.hide(); }
+    });
+    s.addEventListener('contextmenu', e => { if (e.target.closest('.node')) e.preventDefault(); });
+  },
+  toSvg(e) { const pt = this.svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(this.svg.getScreenCTM().inverse()); },
+  onDown(e) {
+    const n = e.target.closest('.node'); if (!n || e.button !== 0) return;
+    const p = this.toSvg(e);
+    this.drag = { id: n.dataset.id, el: n, x0: p.x, y0: p.y, moved: false, pointerId: e.pointerId };
+    try { this.svg.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  },
+  onMove(e) {
+    if (this.drag) {
+      const d = this.drag, p = this.toSvg(e);
+      if (!d.moved && Math.hypot(p.x - d.x0, p.y - d.y0) > 4) { d.moved = true; tooltip.hide(); this.sim.reheat(0.3); }
+      if (d.moved) { this.sim.pin(d.id, Math.max(this.sim.PAD, Math.min(this.sim.W - this.sim.PAD, p.x)), Math.max(this.sim.PAD, Math.min(this.sim.H - this.sim.PAD, p.y))); this.sim.reheat(0.3); this.startLoop(); }
+      return;
+    }
+    if (!tooltip.el.hidden) tooltip.move(e.clientX, e.clientY);
+  },
+  onUp(e) {
+    const d = this.drag; if (!d) return;
+    this.drag = null;
+    try { this.svg.releasePointerCapture(d.pointerId); } catch (err) {}
+    if (d.moved) { this.sim.unpin(d.id); this.sim.reheat(0.3); this.startLoop(); return; }
+    if (e.type === 'pointerup') this.onNodeClick(d.id, d.el);
+  },
+  onNodeClick(id, el) {
+    const r = store.toggleSelect(id);
+    if (!r.changed && r.reason) { el.classList.remove('shake'); void el.getBoundingClientRect(); el.classList.add('shake'); setTimeout(() => el.classList.remove('shake'), 350); }
+  },
+  refreshTooltip() {
+    if (tooltip.el.hidden || !store.hoverId) return;
+    const r = tooltip.el.getBoundingClientRect();
+    tooltip.el.replaceChildren(...courseTooltip(store.hoverId));
+    tooltip.el.style.left = r.left + 'px'; tooltip.el.style.top = r.top + 'px';
+  },
+  createNode(c) {
+    const g = svg('g', { class: 'node', 'data-id': c.id });
+    const inner = svg('g');
+    inner.append(svg('circle', { r: 22 }), svg('text', { class: 'sec' }), svg('text', { class: 'name', y: 39 }));
+    g.append(inner);
+    return g;
+  },
+  rebuild() {
+    const g = store.graph;
+    this.gEdges.replaceChildren(); this.gHits.replaceChildren();
+    this.edgeEls = g.edges.map((e, i) => {
+      const line = svg('line', { class: 'edge ' + (e.section ? 'section' : 'time') });
+      const hit = svg('line', { class: 'edge-hit', 'data-i': i });
+      this.gEdges.append(line); this.gHits.append(hit);
+      return { line, hit, e };
+    });
+    for (const [id, el] of Array.from(this.nodeEls)) if (!g.byId.has(id)) { el.remove(); this.nodeEls.delete(id); }
+    g.nodes.forEach(c => { if (!this.nodeEls.has(c.id)) { const el = this.createNode(c); this.gNodes.append(el); this.nodeEls.set(c.id, el); } });
+    this.emptyMsg.hidden = g.nodes.length > 0;
+    this.sim.setGraph(g.nodes, g.edges);
+    this.updateStates(); this.updateHover();
+    this.sim.reheat(1); this.render(); this.startLoop();
+  },
+  updateStates() {
+    const g = store.graph;
+    this.nodeEls.forEach((el, id) => {
+      const c = g.byId.get(id); if (!c) return;
+      el.dataset.state = store.selected.has(id) ? 'selected' : store.state.blocked.has(id) ? 'blocked' : 'normal';
+      el.style.setProperty('--h', hueOf(c));
+      el.querySelector('.sec').textContent = c.section;
+      el.querySelector('.name').textContent = shortName(c.name);
+      let title = el.querySelector('title'); if (!title) { title = svg('title'); el.prepend(title); }
+      title.textContent = TT.courseLabel(c);
+    });
+  },
+  updateHover() {
+    const hid = store.hoverId; const nbs = hid ? new Set(TT.neighbors(store.graph, hid)) : null;
+    this.nodeEls.forEach((el, id) => { el.classList.toggle('hover', id === hid); el.classList.toggle('neighbor', !!nbs && nbs.has(id)); });
+    this.edgeEls.forEach(({ line, e }) => { const inc = !!hid && (e.a === hid || e.b === hid); line.classList.toggle('hi', inc); line.classList.toggle('dim', !!hid && !inc); });
+  },
+  render() {
+    const pos = this.sim.byId;
+    this.nodeEls.forEach((el, id) => { const nd = pos.get(id); if (nd) el.setAttribute('transform', `translate(${nd.x.toFixed(1)},${nd.y.toFixed(1)})`); });
+    this.edgeEls.forEach(({ line, hit, e }) => {
+      const a = pos.get(e.a), b = pos.get(e.b); if (!a || !b) return;
+      for (const l of [line, hit]) { l.setAttribute('x1', a.x.toFixed(1)); l.setAttribute('y1', a.y.toFixed(1)); l.setAttribute('x2', b.x.toFixed(1)); l.setAttribute('y2', b.y.toFixed(1)); }
+    });
+  },
+  startLoop() { if (this.raf == null) this.raf = requestAnimationFrame(() => this.loop()); },
+  loop() { this.raf = null; this.sim.step(); this.render(); if (this.sim.running) this.startLoop(); }
+};
+function edgeTooltip(edge) {
+  const a = store.graph.byId.get(edge.a), b = store.graph.byId.get(edge.b);
+  return [h('div', { class: 'tt-title' }, `${TT.courseLabel(a)} ↔ ${TT.courseLabel(b)}`), h('div', { class: 'tt-why' }, '동시 수강 불가:', h('ul', null, TT.edgeReasons(store.graph, edge).map(r => h('li', null, r))))];
+}
+
+// ---------- Grid view ----------
+const gridView = {
+  el: $('#grid'), hint: $('#grid-hint'),
+  init() { store.subscribe(() => this.render()); },
+  render() {
+    const courses = store.courses, days = TT.daysNeeded(courses), range = TT.timeRange(courses);
+    const total = range.endMin - range.startMin, hours = total / 60;
+    this.el.style.setProperty('--days', days.length); this.el.style.setProperty('--hours', hours);
+    const pct = m => ((m - range.startMin) / total * 100).toFixed(3) + '%';
+    const frag = document.createDocumentFragment();
+    frag.append(h('div', { class: 'corner' }));
+    days.forEach(d => frag.append(h('div', { class: 'day-head' + (d >= 6 ? ' weekend' : '') }, TT.dayLabel(d))));
+    const timeCol = h('div', { class: 'time-col' });
+    for (let m = range.startMin; m <= range.endMin; m += 60) timeCol.append(h('div', { class: 't', style: `top:${pct(m)}` }, TT.formatTime(m)));
+    frag.append(timeCol);
+    const cols = new Map(); days.forEach(d => { const col = h('div', { class: 'day-col' + (d >= 6 ? ' weekend' : ''), 'data-day': d }); cols.set(d, col); frag.append(col); });
+    const hid = store.hoverId, hov = hid ? store.graph.byId.get(hid) : null;
+    const hovSlots = hov && !store.selected.has(hid) ? hov.slots : [];
+    courses.forEach(c => {
+      if (!store.selected.has(c.id)) return;
+      c.slots.forEach(s => {
+        const clash = hovSlots.some(hs => TT.slotsOverlap(hs, s));
+        const blk = h('div', { class: 'blk' + (clash ? ' clash' : '') + (hid === c.id ? ' hover' : ''), 'data-id': c.id, style: `--h:${hueOf(c)};top:${pct(TT.toMin(s.start))};height:${pct(TT.toMin(s.end) + range.startMin).replace('%', '')}%`, title: `${TT.courseLabel(c)} ${TT.slotText(s)}` },
+          h('div', { class: 'n' }, c.name, ' ', c.section), h('div', { class: 'm' }, [c.professor, c.room].filter(Boolean).join(' · ')), h('div', { class: 'm' }, `${s.start}–${s.end}`));
+        blk.style.height = ((TT.toMin(s.end) - TT.toMin(s.start)) / total * 100).toFixed(3) + '%';
+        blk.addEventListener('pointerenter', e => { store.setHover(c.id); tooltip.show(courseTooltip(c.id), e.clientX, e.clientY); });
+        blk.addEventListener('pointermove', e => tooltip.move(e.clientX, e.clientY));
+        blk.addEventListener('pointerleave', () => { store.setHover(null); tooltip.hide(); });
+        blk.addEventListener('click', () => store.toggleSelect(c.id));
+        cols.get(s.day).append(blk);
+      });
+    });
+    if (hov) hovSlots.forEach(s => {
+      const ghost = h('div', { class: 'blk ghost' + (store.state.blocked.has(hid) ? ' blocked' : ''), style: `--h:${hueOf(hov)};top:${pct(TT.toMin(s.start))}` },
+        h('div', { class: 'n' }, hov.name, ' ', hov.section), h('div', { class: 'm' }, `${s.start}–${s.end}`));
+      ghost.style.height = ((TT.toMin(s.end) - TT.toMin(s.start)) / total * 100).toFixed(3) + '%';
+      cols.get(s.day).append(ghost);
+    });
+    this.el.replaceChildren(frag);
+    const n = store.selected.size, cr = TT.totalCredits(courses, store.selected);
+    this.hint.textContent = n ? `${n}과목${cr ? ` · ${cr}학점` : ''}` : '노드를 클릭해 수업을 고르세요';
+  }
+};
+
+// ---------- Course list ----------
+const listView = {
+  ul: $('#course-list'), empty: $('#list-empty'), count: $('#course-count'), summary: $('#sel-summary'),
+  init() { store.subscribe(type => { if (type === 'hover') this.updateHover(); else this.render(); }); },
+  render() {
+    const courses = store.courses.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko') || a.section.localeCompare(b.section, 'ko', { numeric: true }));
+    this.ul.replaceChildren(...courses.map(c => {
+      const state = store.selected.has(c.id) ? 'selected' : store.state.blocked.has(c.id) ? 'blocked' : 'normal';
+      const meta1 = [c.professor, typeof c.credits === 'number' ? c.credits + '학점' : null, c.room].filter(Boolean).join(' · ');
+      const meta2 = c.slots.length ? c.slots.map(TT.slotText).join(', ') : '';
+      const li = h('li', { 'data-id': c.id, 'data-state': state, style: `--h:${hueOf(c)}`, class: store.hoverId === c.id ? 'hover' : '' },
+        h('span', { class: 'dot' }),
+        h('div', null,
+          h('div', { class: 'title' }, c.name, h('span', { class: 'sec' }, c.section),
+            !c.slots.length ? h('span', { class: 'badge' }, '시간 미정') : null,
+            state === 'selected' ? h('span', { class: 'badge state' }, '선택') : state === 'blocked' ? h('span', { class: 'badge state' }, '충돌') : null),
+          meta1 ? h('div', { class: 'meta', title: meta1 }, meta1) : null,
+          meta2 ? h('div', { class: 'meta', title: meta2 }, meta2) : null),
+        h('div', { class: 'ops' },
+          h('button', { class: 'btn small', type: 'button', title: '편집', onclick: e => { e.stopPropagation(); formView.open(c); } }, '편집'),
+          h('button', { class: 'btn small danger', type: 'button', title: '삭제', onclick: e => { e.stopPropagation(); if (confirm(`'${TT.courseLabel(c)}' 과목을 삭제할까요?`)) store.deleteCourse(c.id); } }, '삭제')));
+      li.addEventListener('click', () => { const r = store.toggleSelect(c.id); if (!r.changed && r.reason) toast('선택할 수 없습니다: ' + r.reason.split('\n')[0], { type: 'error' }); });
+      li.addEventListener('pointerenter', () => store.setHover(c.id));
+      li.addEventListener('pointerleave', () => store.setHover(null));
+      return li;
+    }));
+    this.empty.hidden = courses.length > 0;
+    this.count.textContent = courses.length ? `${courses.length}개` : '';
+    const n = store.selected.size, cr = TT.totalCredits(store.courses, store.selected);
+    this.summary.textContent = `선택 ${n}과목${cr ? ` · ${cr}학점` : ''}`;
+  },
+  updateHover() { this.ul.querySelectorAll('li').forEach(li => li.classList.toggle('hover', li.dataset.id === store.hoverId)); }
+};
+
+// ---------- Course form ----------
+const formView = {
+  dialog: $('#course-dialog'), form: $('#course-form'), rows: $('#slot-rows'), errors: $('#form-errors'), title: $('#dialog-title'), editingId: null,
+  init() {
+    $('#btn-add-slot').addEventListener('click', () => this.addRow());
+    $('#btn-cancel').addEventListener('click', () => this.dialog.close());
+    this.form.addEventListener('submit', e => { e.preventDefault(); this.submit(); });
+  },
+  open(course) {
+    this.editingId = course ? course.id : null;
+    this.title.textContent = course ? '과목 편집' : '과목 추가';
+    const f = this.form;
+    f.name.value = course ? course.name : ''; f.section.value = course ? course.section : '';
+    f.credits.value = course && course.credits != null ? course.credits : ''; f.professor.value = course && course.professor || ''; f.room.value = course && course.room || '';
+    this.rows.replaceChildren(); this.errors.replaceChildren();
+    if (course && course.slots.length) course.slots.forEach(s => this.addRow(s)); else this.addRow();
+    this.dialog.showModal(); f.name.focus();
+  },
+  addRow(slot) {
+    const sel = h('select', { name: 'day' }, TT.DAYS.map((d, i) => h('option', { value: i + 1 }, d)));
+    if (slot) sel.value = slot.day;
+    const row = h('div', { class: 'slot-row' }, sel,
+      h('input', { type: 'time', name: 'start', step: 300, value: slot ? slot.start : '09:00' }), h('span', { class: 'tilde' }, '~'),
+      h('input', { type: 'time', name: 'end', step: 300, value: slot ? slot.end : '10:15' }),
+      h('button', { type: 'button', class: 'rm', title: '이 시간 삭제', onclick: () => row.remove() }, '×'));
+    this.rows.append(row);
+  },
+  collect() {
+    const f = this.form;
+    const slots = Array.from(this.rows.querySelectorAll('.slot-row')).map(r => ({ day: +r.querySelector('select').value, start: r.querySelector('[name=start]').value, end: r.querySelector('[name=end]').value }));
+    return { id: this.editingId || undefined, name: f.name.value, section: f.section.value, credits: f.credits.value, professor: f.professor.value, room: f.room.value, slots };
+  },
+  submit() {
+    const n = TT.normalizeCourse(this.collect());
+    const errs = n.errors.slice();
+    const key = TT.courseKey(n.course);
+    if (!errs.length && store.courses.some(c => c.id !== this.editingId && TT.courseKey(c) === key)) errs.push('이미 같은 과목·분반이 있습니다');
+    this.errors.replaceChildren(...errs.map(e => h('li', null, e)));
+    if (errs.length) return;
+    if (this.editingId) {
+      const dropped = store.updateCourse(this.editingId, n.course);
+      dropped.forEach(d => { const other = store.graph.byId.get(d.because); toast(`'${TT.courseLabel(n.course)}' 이(가) 선택된 '${other ? TT.courseLabel(other) : '?'}' 과 충돌하여 선택이 해제되었습니다.`); });
+    } else store.addCourse(n.course);
+    this.dialog.close();
+  }
+};
+
+// ---------- Import / Export ----------
+async function readFileText(file) {
+  const buf = await file.arrayBuffer();
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+  catch (e) { try { return new TextDecoder('euc-kr').decode(buf); } catch (e2) { return new TextDecoder().decode(buf); } }
+}
+const fmtErr = e => e.line ? `${e.line}행: ${e.message}` : e.message;
+function importText(text, opts = {}) {
+  const res = TT.importAny(text);
+  if (!res.courses.length) { toast('불러올 수 있는 과목이 없습니다', { type: 'error', details: res.errors.map(fmtErr).concat(res.warnings) }); return res; }
+  if (opts.confirmReplace !== false && store.courses.length && !confirm(`기존 과목 ${store.courses.length}개를 대체합니다. 계속할까요?`)) return null;
+  store.setCourses(res.courses, res.selected);
+  let msg = `${res.courses.length}개 과목 불러옴 (${res.format.toUpperCase()})`;
+  if (res.errors.length) msg += `, ${res.errors.length}행 무시됨`;
+  if (res.selected.length) msg += `, ${res.selected.length}개 선택 복원`;
+  toast(msg, { details: res.errors.map(fmtErr).concat(res.warnings) });
+  return res;
+}
+async function handleFiles(files) {
+  const file = files && files[0]; if (!file) return;
+  try { importText(await readFileText(file)); }
+  catch (e) { toast('파일을 읽지 못했습니다: ' + e.message, { type: 'error' }); }
+}
+function exportJSON() {
+  const blob = new Blob([TT.toJSON(store.courses, store.selected)], { type: 'application/json' });
+  const a = h('a', { href: URL.createObjectURL(blob), download: `timetable-${ymd()}.json` });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast('JSON 파일로 내보냈습니다');
+}
+function initImportExport() {
+  const input = $('#file-input'), overlay = $('#drop-overlay');
+  $('#btn-import').addEventListener('click', () => { input.value = ''; input.click(); });
+  input.addEventListener('change', () => handleFiles(input.files));
+  $('#btn-export').addEventListener('click', exportJSON);
+  let depth = 0;
+  const hasFiles = e => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  document.addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); depth++; overlay.hidden = false; });
+  document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) overlay.hidden = true; });
+  document.addEventListener('drop', e => { if (!hasFiles(e)) return; e.preventDefault(); depth = 0; overlay.hidden = true; handleFiles(e.dataTransfer.files); });
+}
+
+// ---------- 초기화 ----------
+graphView.init(); gridView.init(); listView.init(); formView.init(); initImportExport();
+$('#btn-add').addEventListener('click', () => formView.open(null));
+$('#btn-clear-sel').addEventListener('click', () => store.clearSelection());
+$('#btn-sample').addEventListener('click', () => {
+  if (store.courses.length && !confirm('현재 과목과 선택을 모두 지우고 샘플 데이터로 되돌릴까요?')) return;
+  store.setCourses(TT.sampleCourses(), []); toast('샘플 데이터를 불러왔습니다');
+});
+$('#btn-theme').addEventListener('click', () => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next; try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') tooltip.hide(); });
+if (!store.load()) store.setCourses(TT.sampleCourses(), []); else store.emit('data');
+
+window.app = { store, graphView, gridView, listView, formView, sim: graphView.sim, importText, readFileText, exportJSON, toast };
+})();
+</script>
+</body>
+</html>

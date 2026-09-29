@@ -1,0 +1,273 @@
+{
+  "format": "timetable-graph",
+  "version": 1,
+  "exportedAt": "2026-09-29T00:00:00.000Z",
+  "courses": [
+    {
+      "id": "c-s01",
+      "name": "자료구조",
+      "section": "01",
+      "professor": "김민수",
+      "credits": 3,
+      "room": "공학관 301",
+      "slots": [
+        {
+          "day": "월",
+          "start": "09:00",
+          "end": "10:15"
+        },
+        {
+          "day": "수",
+          "start": "09:00",
+          "end": "10:15"
+        }
+      ]
+    },
+    {
+      "id": "c-s02",
+      "name": "자료구조",
+      "section": "02",
+      "professor": "김민수",
+      "credits": 3,
+      "room": "공학관 301",
+      "slots": [
+        {
+          "day": "화",
+          "start": "13:30",
+          "end": "14:45"
+        },
+        {
+          "day": "목",
+          "start": "13:30",
+          "end": "14:45"
+        }
+      ]
+    },
+    {
+      "id": "c-s03",
+      "name": "알고리즘",
+      "section": "01",
+      "professor": "이서연",
+      "credits": 3,
+      "room": "공학관 302",
+      "slots": [
+        {
+          "day": "월",
+          "start": "10:30",
+          "end": "11:45"
+        },
+        {
+          "day": "수",
+          "start": "10:30",
+          "end": "11:45"
+        }
+      ]
+    },
+    {
+      "id": "c-s04",
+      "name": "알고리즘",
+      "section": "02",
+      "professor": "이서연",
+      "credits": 3,
+      "room": "공학관 302",
+      "slots": [
+        {
+          "day": "화",
+          "start": "10:15",
+          "end": "11:30"
+        },
+        {
+          "day": "목",
+          "start": "10:15",
+          "end": "11:30"
+        }
+      ]
+    },
+    {
+      "id": "c-s05",
+      "name": "운영체제",
+      "section": "01",
+      "professor": "박지훈",
+      "credits": 3,
+      "room": "공학관 401",
+      "slots": [
+        {
+          "day": "월",
+          "start": "13:30",
+          "end": "14:45"
+        },
+        {
+          "day": "수",
+          "start": "13:30",
+          "end": "14:45"
+        }
+      ]
+    },
+    {
+      "id": "c-s06",
+      "name": "컴퓨터구조",
+      "section": "01",
+      "professor": "최유진",
+      "credits": 3,
+      "room": "공학관 305",
+      "slots": [
+        {
+          "day": "화",
+          "start": "09:00",
+          "end": "10:15"
+        },
+        {
+          "day": "목",
+          "start": "09:00",
+          "end": "10:15"
+        }
+      ]
+    },
+    {
+      "id": "c-s07",
+      "name": "데이터베이스",
+      "section": "01",
+      "professor": "정하늘",
+      "credits": 3,
+      "room": "공학관 402",
+      "slots": [
+        {
+          "day": "화",
+          "start": "15:00",
+          "end": "16:15"
+        },
+        {
+          "day": "목",
+          "start": "15:00",
+          "end": "16:15"
+        }
+      ]
+    },
+    {
+      "id": "c-s08",
+      "name": "컴퓨터네트워크",
+      "section": "01",
+      "professor": "한동훈",
+      "credits": 3,
+      "room": "공학관 403",
+      "slots": [
+        {
+          "day": "월",
+          "start": "14:30",
+          "end": "15:45"
+        },
+        {
+          "day": "수",
+          "start": "14:30",
+          "end": "15:45"
+        }
+      ]
+    },
+    {
+      "id": "c-s09",
+      "name": "소프트웨어공학",
+      "section": "01",
+      "professor": "오세영",
+      "credits": 3,
+      "room": "공학관 404",
+      "slots": [
+        {
+          "day": "화",
+          "start": "13:30",
+          "end": "14:45"
+        },
+        {
+          "day": "목",
+          "start": "13:30",
+          "end": "14:45"
+        }
+      ]
+    },
+    {
+      "id": "c-s10",
+      "name": "이산수학",
+      "section": "01",
+      "professor": "윤지아",
+      "credits": 3,
+      "room": "자연관 201",
+      "slots": [
+        {
+          "day": "월",
+          "start": "09:30",
+          "end": "10:45"
+        },
+        {
+          "day": "수",
+          "start": "09:30",
+          "end": "10:45"
+        }
+      ]
+    },
+    {
+      "id": "c-s11",
+      "name": "프로그래밍언어론",
+      "section": "01",
+      "professor": "강도윤",
+      "credits": 3,
+      "room": "공학관 306",
+      "slots": [
+        {
+          "day": "월",
+          "start": "10:00",
+          "end": "11:15"
+        }
+      ]
+    },
+    {
+      "id": "c-s12",
+      "name": "캡스톤디자인",
+      "section": "01",
+      "professor": "박지훈",
+      "credits": 3,
+      "room": "공학관 실습실",
+      "slots": [
+        {
+          "day": "금",
+          "start": "13:00",
+          "end": "16:00"
+        }
+      ]
+    },
+    {
+      "id": "c-s13",
+      "name": "오픈소스SW",
+      "section": "01",
+      "professor": "김민수",
+      "credits": 2,
+      "room": "공학관 실습실",
+      "slots": [
+        {
+          "day": "목",
+          "start": "15:00",
+          "end": "16:50"
+        }
+      ]
+    },
+    {
+      "id": "c-s14",
+      "name": "인공지능개론",
+      "section": "01",
+      "professor": "서준호",
+      "credits": 3,
+      "room": "공학관 405",
+      "slots": [
+        {
+          "day": "화",
+          "start": "16:30",
+          "end": "17:45"
+        },
+        {
+          "day": "목",
+          "start": "16:30",
+          "end": "17:45"
+        }
+      ]
+    }
+  ],
+  "selected": []
+}
