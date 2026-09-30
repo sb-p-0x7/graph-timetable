@@ -116,6 +116,30 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .sidebar-foot .sum { font-weight: 600; }
 .sidebar-foot .btn { margin-left: auto; }
 .empty { color: var(--muted); padding: 24px 16px; text-align: center; font-size: 13px; }
+#interest { border-bottom: 1px solid var(--line); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.interest-row { display: flex; align-items: center; font-size: 12px; font-weight: 600; color: var(--muted); }
+.linkbtn { margin-left: auto; border: 0; background: none; color: var(--accent); font-size: 12px; padding: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 136px; overflow: auto; }
+.chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px; font-size: 12px; line-height: 1.4; }
+.chip:hover { background: var(--panel-2); }
+.chip .cnt { color: var(--muted); margin-left: 5px; font-size: 11px; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip[aria-pressed="true"] .cnt { color: rgba(255,255,255,.85); }
+.chip:focus-visible, #search-results .res:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#course-search { width: 100%; font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text); }
+#course-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+#search-results { list-style: none; margin: 6px 0 0; padding: 0; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+#search-results li + li { border-top: 1px solid var(--line-2); }
+#search-results .res { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; width: 100%; text-align: left; background: none; border: 0; padding: 6px 8px; font: inherit; color: inherit; cursor: pointer; }
+#search-results .res:hover { background: var(--panel-2); }
+#search-results .r1 { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#search-results .r1 .code, #course-list .code { color: var(--muted); font-weight: 400; font-size: 11px; margin-right: 4px; }
+#search-results .r2 { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#search-results .warn { color: var(--danger); }
+#search-results .tag { font-size: 11px; align-self: center; color: var(--muted); white-space: nowrap; }
+#search-results .tag.add { color: var(--accent); font-weight: 600; }
+#search-results .tag.on { color: var(--ok); font-weight: 600; }
+#search-results .more { font-size: 11px; color: var(--muted); padding: 6px 8px; }
 
 /* ---------- graph ---------- */
 #graph-pane { background: var(--bg); position: relative; }
@@ -288,6 +312,14 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
 <main class="layout" id="app-root">
   <aside class="pane" id="sidebar">
     <div class="pane-head">과목 목록 <span class="hint" id="course-count"></span></div>
+    <div id="interest" hidden>
+      <div class="interest-row" id="dept-row"><span>관심 학과</span><button class="linkbtn" id="btn-clear-depts" type="button" hidden>모두 해제</button></div>
+      <div id="dept-chips" class="chips" role="group" aria-label="관심 학과"></div>
+      <div>
+        <input id="course-search" type="search" placeholder="전체 과목 검색 · 과목명, 교과목번호, 교수" autocomplete="off" aria-label="전체 과목 검색">
+        <ul id="search-results" hidden aria-label="검색 결과"></ul>
+      </div>
+    </div>
     <div class="pane-body">
       <ul id="course-list"></ul>
       <div class="empty" id="list-empty" hidden>과목이 없습니다.<br>「＋ 과목 추가」 또는 「파일 불러오기」로 시작하세요.</div>
@@ -404,7 +436,20 @@ TT.sectionKey = function (s) {
   const t = TT.nfc(s);
   return /^\d+$/.test(t) ? String(parseInt(t, 10)) : t.toLowerCase();
 };
-TT.courseKey = function (c) { return JSON.stringify([TT.nfc(c.name), TT.sectionKey(c.section)]); };
+TT.normalizeCode = function (s) { const t = TT.nfc(s).toUpperCase().replace(/\s+/g, ''); return t || null; };
+// 교과목번호가 있으면 번호로, 없으면 과목명으로 "같은 과목"을 판정한다
+TT.courseIdentity = function (c) { const code = TT.normalizeCode(c.code); return code ? 'C:' + code : 'N:' + TT.nfc(c.name); };
+TT.sameCourse = function (a, b) {
+  const ca = TT.normalizeCode(a.code), cb = TT.normalizeCode(b.code);
+  return ca && cb ? ca === cb : TT.nfc(a.name) === TT.nfc(b.name);
+};
+TT.courseKey = function (c) { return JSON.stringify([TT.courseIdentity(c), TT.sectionKey(c.section)]); };
+// 개설학과: 명시된 값이 없으면 교과목번호의 영문 접두어(예: EC2208 → EC)
+TT.deptOf = function (c) {
+  if (c.dept) return c.dept;
+  const m = /^[A-Z]+/.exec(TT.normalizeCode(c.code) || '');
+  return m ? m[0] : null;
+};
 TT.courseLabel = function (c) { return c.section ? c.name + ' ' + c.section : c.name; };
 TT.slotText = function (slot) { return TT.dayLabel(slot.day) + ' ' + slot.start + '–' + slot.end; };
 
@@ -446,7 +491,9 @@ TT.normalizeCourse = function (raw, opts) {
   slots.sort(function (a, b) { return a.day - b.day || TT.toMin(a.start) - TT.toMin(b.start); });
   const course = {
     id: raw.id != null && String(raw.id).trim() ? String(raw.id).trim() : TT.uid(),
-    name: name, section: section, professor: professor, credits: credits, room: room, slots: slots
+    code: TT.normalizeCode(raw.code), name: name, section: section,
+    dept: TT.nfc(raw.dept) || null, kind: TT.nfc(raw.kind) || null,
+    professor: professor, credits: credits, room: room, slots: slots
   };
   return { ok: errors.length === 0, course: course, errors: errors };
 };
@@ -461,7 +508,7 @@ TT.slotIntersection = function (a, b) {
 };
 TT.conflict = function (a, b) {
   if (a.id === b.id) return null;
-  const section = a.name === b.name;
+  const section = TT.sameCourse(a, b);
   const overlaps = [];
   a.slots.forEach(function (sa) { b.slots.forEach(function (sb) {
     const it = TT.slotIntersection(sa, sb);
@@ -612,6 +659,9 @@ const CSV_ALIASES = {
   professor: ['professor', '교수', '교수명', 'prof', '담당교수', '강사'],
   credits: ['credits', 'credit', '학점'],
   room: ['room', '강의실', '장소', '강의장소'],
+  code: ['code', 'course_code', 'coursecode', 'course no', 'course number', '교과목번호', '과목번호', '과목코드', '교과목코드', '학수번호'],
+  dept: ['dept', 'department', 'major', '개설학과', '개설학부', '개설전공', '학과', '학부', '전공', '소속'],
+  kind: ['kind', 'category', 'type', '이수구분', '과목구분', '구분'],
   day: ['day', '요일'],
   start: ['start', '시작', '시작시간', 'begin', 'from'],
   end: ['end', '종료', '종료시간', 'finish', 'to']
@@ -645,9 +695,12 @@ TT.coursesFromCSV = function (text) {
       slot = ns.slot;
     }
     const section = get(r, 'section') || '01';
-    const key = TT.courseKey({ name: name, section: section });
-    if (!groups.has(key)) groups.set(key, { name: name, section: section, professor: null, credits: null, room: null, slots: [], line: line });
+    const code = get(r, 'code');
+    const key = TT.courseKey({ code: code, name: name, section: section });
+    if (!groups.has(key)) groups.set(key, { code: code, name: name, section: section, dept: null, kind: null, professor: null, credits: null, room: null, slots: [], line: line });
     const g = groups.get(key);
+    if (!g.dept && get(r, 'dept')) g.dept = get(r, 'dept');
+    if (!g.kind && get(r, 'kind')) g.kind = get(r, 'kind');
     if (!g.professor && get(r, 'professor')) g.professor = get(r, 'professor');
     if (g.credits == null && get(r, 'credits') !== '') g.credits = get(r, 'credits');
     if (!g.room && get(r, 'room')) g.room = get(r, 'room');
@@ -690,7 +743,12 @@ TT.coursesFromJSON = function (text) {
     if (c) warnings.push('선택 항목 충돌로 해제: ' + TT.courseLabel(c));
   });
   selected = Array.from(pr.selected);
-  return { courses: courses, selected: selected, errors: errors, warnings: warnings };
+  const it = data.interests && typeof data.interests === 'object' ? data.interests : {};
+  const interests = {
+    depts: Array.isArray(it.depts) ? it.depts.map(TT.nfc).filter(Boolean) : [],
+    pinned: Array.isArray(it.pinned) ? it.pinned.map(function (id) { return String(id == null ? '' : id).trim(); }).filter(function (id) { return ids.has(id); }) : []
+  };
+  return { courses: courses, selected: selected, interests: interests, errors: errors, warnings: warnings };
 };
 
 TT.sniffFormat = function (text) {
@@ -701,6 +759,7 @@ TT.importAny = function (text) {
   const fmt = TT.sniffFormat(text);
   const res = fmt === 'json' ? TT.coursesFromJSON(text) : TT.coursesFromCSV(text);
   if (!res.selected) res.selected = [];
+  if (!res.interests) res.interests = { depts: [], pinned: [] };
   res.format = fmt;
   return res;
 };
@@ -711,23 +770,70 @@ TT.toJSON = function (courses, selected, opts) {
   const doc = {
     format: 'timetable-graph', version: 1,
     exportedAt: opts.now || new Date().toISOString(),
-    courses: courses.map(function (c) { return {
-      id: c.id, name: c.name, section: c.section, professor: c.professor, credits: c.credits, room: c.room,
-      slots: c.slots.map(function (s) { return { day: TT.dayLabel(s.day), start: s.start, end: s.end }; })
-    }; }),
+    courses: courses.map(function (c) {
+      const o = { id: c.id };
+      if (c.code) o.code = c.code;
+      o.name = c.name; o.section = c.section;
+      if (c.dept) o.dept = c.dept;
+      if (c.kind) o.kind = c.kind;
+      o.professor = c.professor; o.credits = c.credits; o.room = c.room;
+      o.slots = c.slots.map(function (s) { return { day: TT.dayLabel(s.day), start: s.start, end: s.end }; });
+      return o;
+    }),
     selected: sel
   };
+  const itDepts = opts.interests ? Array.from(opts.interests.depts || []) : [];
+  const itPinned = opts.interests ? Array.from(opts.interests.pinned || []) : [];
+  if (itDepts.length || itPinned.length) doc.interests = { depts: itDepts, pinned: itPinned };
   return JSON.stringify(doc, null, 2);
 };
 TT.toCSV = function (courses) {
   const q = function (v) { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const out = ['name,section,professor,credits,room,day,start,end'];
+  const out = ['code,name,section,dept,kind,professor,credits,room,day,start,end'];
   courses.forEach(function (c) {
-    const base = [c.name, c.section, c.professor, c.credits, c.room].map(q).join(',');
+    const base = [c.code, c.name, c.section, c.dept, c.kind, c.professor, c.credits, c.room].map(q).join(',');
     if (!c.slots.length) out.push(base + ',,,');
     c.slots.forEach(function (s) { out.push(base + ',' + [TT.dayLabel(s.day), s.start, s.end].map(q).join(',')); });
   });
   return '﻿' + out.join('\r\n') + '\r\n';
+};
+
+// ---------- 관심 학과 / 검색 ----------
+TT.DEPT_NAMES = {}; // 교과목번호 접두어 → 학과 이름 (데이터에 학과 이름이 없을 때 표시용)
+TT.deptLabel = function (d) { return TT.DEPT_NAMES[d] ? d + ' ' + TT.DEPT_NAMES[d] : d; };
+TT.VISIBLE_ALL_LIMIT = 80; // 과목이 이 수 이하이면 학과를 고르지 않아도 전부 보여 준다
+TT.deptSummary = function (courses) {
+  const m = new Map();
+  courses.forEach(function (c) { const d = TT.deptOf(c); if (d) m.set(d, (m.get(d) || 0) + 1); });
+  return Array.from(m, function (e) { return { dept: e[0], count: e[1] }; })
+    .sort(function (a, b) { return b.count - a.count || a.dept.localeCompare(b.dept, 'ko'); });
+};
+// 그래프에 올릴 과목: 선택한 과목 + 직접 추가한 과목 + 관심 학과의 과목
+TT.visibleIds = function (courses, view) {
+  view = view || {};
+  const depts = view.depts || new Set(), pinned = view.pinned || new Set(), selected = view.selected || new Set();
+  // 학과를 고르지 않았고 과목이 적으면 전부 보인다 (직접 추가한 과목이 있어도 마찬가지)
+  const showAll = depts.size === 0 && courses.length <= TT.VISIBLE_ALL_LIMIT;
+  const out = new Set();
+  courses.forEach(function (c) {
+    if (showAll || selected.has(c.id) || pinned.has(c.id) || depts.has(TT.deptOf(c))) out.add(c.id);
+  });
+  return out;
+};
+TT.searchCourses = function (courses, query, limit) {
+  const q = TT.nfc(query).toLowerCase().replace(/\s+/g, '');
+  if (!q) return [];
+  const hits = [];
+  courses.forEach(function (c) {
+    const code = (c.code || '').toLowerCase();
+    const hay = [c.code, c.name, c.professor, TT.deptOf(c), c.kind].filter(Boolean).join('|').toLowerCase().replace(/\s+/g, '');
+    const at = hay.indexOf(q);
+    if (at < 0) return;
+    const rank = code.indexOf(q) === 0 ? 0 : TT.nfc(c.name).toLowerCase().replace(/\s+/g, '').indexOf(q) === 0 ? 1 : 2;
+    hits.push({ c: c, rank: rank });
+  });
+  hits.sort(function (a, b) { return a.rank - b.rank || (a.c.code || a.c.name).localeCompare(b.c.code || b.c.name, 'ko') || a.c.section.localeCompare(b.c.section, 'ko', { numeric: true }); });
+  return hits.slice(0, limit || 50).map(function (h) { return h.c; });
 };
 
 // ---------- 시드 난수 / 힘 기반 배치 ----------
@@ -947,6 +1053,49 @@ TT.runSelfTests = function () {
     ok(g.adj.get('a').get('b') === g.adj.get('b').get('a'), '대칭');
     ok(g.adj.get('a').get('b').section === true && g.adj.get('a').get('c').section === false, '플래그');
     ok(!g.adj.get('a').has('a'), '자기 간선 없음');
+  });
+  t('교과목번호·개설학과와 같은 과목 판정', function () {
+    const a = C('a', '자료구조', '01', [S('월', '09:00', '10:15')], { code: ' ec 2208 ', dept: '전기전자컴퓨터공학부', kind: '전공필수' });
+    eq(a.code, 'EC2208', '코드 정규화'); eq(a.dept, '전기전자컴퓨터공학부'); eq(a.kind, '전공필수');
+    eq(TT.deptOf(a), '전기전자컴퓨터공학부', '명시된 학과 우선');
+    eq(TT.deptOf(C('b', 'X', '01', [], { code: 'MA2101' })), 'MA', '코드 접두어로 학과 추정');
+    eq(TT.deptOf(C('c', 'X', '01', [])), null, '정보 없음');
+    const b = C('b', 'Data Structures', '02', [S('화', '09:00', '10:15')], { code: 'EC2208' });
+    ok(TT.conflict(a, b) && TT.conflict(a, b).section, '코드가 같으면 이름이 달라도 같은 과목');
+    const d = C('d', '자료구조', '02', [S('화', '09:00', '10:15')], { code: 'CT2208' });
+    ok(TT.conflict(a, d) === null, '코드가 다르면 이름이 같아도 다른 과목');
+    const e = C('e', '자료구조', '03', [S('수', '15:00', '16:15')]);
+    ok(TT.conflict(a, e) && TT.conflict(a, e).section, '한쪽에 코드가 없으면 이름으로 판정');
+    ok(TT.courseKey(a) !== TT.courseKey(d), '코드가 다르면 중복 키도 다름');
+    const csv = TT.coursesFromCSV('교과목번호,교과목명,분반,개설학과,이수구분,요일,시작,종료\nEC2208,자료구조,01,전기전자컴퓨터공학부,전공필수,월,09:00,10:15\nEC2208,자료구조,1,,,수,09:00,10:15\nMA2101,선형대수,01,수리과학과,전공선택,화,13:00,14:15');
+    eq(csv.errors, []); eq(csv.courses.length, 2); eq(csv.courses[0].code, 'EC2208'); eq(csv.courses[0].dept, '전기전자컴퓨터공학부'); eq(csv.courses[0].kind, '전공필수'); eq(csv.courses[0].slots.length, 2);
+    const json = TT.toJSON([a], [], { now: 'x' }); ok(/"code": "EC2208"/.test(json) && /"dept"/.test(json), '내보내기에 포함');
+    ok(!/"code"/.test(TT.toJSON(TT.sampleCourses(), [], { now: 'x' })), '값이 없으면 필드를 쓰지 않음');
+    eq(TT.coursesFromJSON(json).courses[0], a, 'JSON 왕복');
+  });
+  t('관심 학과 · 보이는 과목 · 검색', function () {
+    const cs = [
+      C('e1', '자료구조', '01', [S('월', '09:00', '10:15')], { code: 'EC2208' }), C('e2', '자료구조', '02', [S('화', '09:00', '10:15')], { code: 'EC2208' }),
+      C('e3', '신호및시스템', '01', [S('수', '09:00', '10:15')], { code: 'EC3101' }), C('m1', '선형대수', '01', [S('월', '09:30', '10:45')], { code: 'MA2101', professor: '김교수' }),
+      C('p1', '일반물리', '01', [S('목', '13:00', '14:15')], { dept: '물리·광과학과' })
+    ];
+    eq(TT.deptSummary(cs), [{ dept: 'EC', count: 3 }, { dept: '물리·광과학과', count: 1 }, { dept: 'MA', count: 1 }], '과목 수 내림차순, 같으면 한국어 정렬');
+    eq(Array.from(TT.visibleIds(cs, {})).length, 5, '과목이 적으면 전부 보임');
+    eq(Array.from(TT.visibleIds(cs, { pinned: new Set(['p1']) })).length, 5, '과목이 적으면 직접 추가가 있어도 전부 보임');
+    eq(Array.from(TT.visibleIds(cs, { depts: new Set(['MA']) })), ['m1'], '관심 학과만');
+    eq(Array.from(TT.visibleIds(cs, { depts: new Set(['MA']), pinned: new Set(['p1']), selected: new Set(['e3']) })), ['e3', 'm1', 'p1'], '학과 + 직접 추가 + 선택');
+    const many = []; for (let i = 0; i < TT.VISIBLE_ALL_LIMIT + 1; i++) many.push(C('x' + i, 'X' + i, '01', [], { code: 'GS' + (1000 + i) }));
+    eq(Array.from(TT.visibleIds(many, { selected: new Set(['x3']) })), ['x3'], '과목이 많으면 학과를 고르기 전엔 선택한 것만');
+    eq(TT.searchCourses(cs, 'ec22').map(function (c) { return c.id; }), ['e1', 'e2'], '코드 검색');
+    eq(TT.searchCourses(cs, '선형 대수').map(function (c) { return c.id; }), ['m1'], '공백 무시 이름 검색');
+    eq(TT.searchCourses(cs, '김교수').map(function (c) { return c.id; }), ['m1'], '교수 검색');
+    eq(TT.searchCourses(cs, ''), [], '빈 검색어');
+    eq(TT.searchCourses(many, 'gs', 10).length, 10, '개수 제한');
+    const doc = TT.toJSON(cs, ['m1'], { now: 'x', interests: { depts: new Set(['MA']), pinned: new Set(['p1']) } });
+    const back = TT.coursesFromJSON(doc);
+    eq(back.interests, { depts: ['MA'], pinned: ['p1'] }, '관심 학과·추가 과목 왕복');
+    eq(TT.coursesFromJSON('{"courses":[],"interests":{"pinned":["nope"]}}').interests, { depts: [], pinned: [] }, '없는 id는 버림');
+    ok(!/interests/.test(TT.toJSON(cs, [], { now: 'x', interests: { depts: [], pinned: [] } })), '비어 있으면 쓰지 않음');
   });
   const fixture = function () {
     // A-B, B-C, C-D (경로), E 고립
@@ -1183,8 +1332,8 @@ function toast(msg, opts = {}) {
   if (det) det.addEventListener('toggle', () => { clearTimeout(timer); if (!det.open) timer = setTimeout(close, 6000); });
   return node;
 }
-const snapshot = () => ({ courses: store.courses.slice(), selected: Array.from(store.selected) });
-const undoAction = prev => prev.courses.length ? { label: '되돌리기', onClick: () => { store.setCourses(prev.courses, prev.selected); toast('이전 상태로 되돌렸습니다'); } } : null;
+const snapshot = () => ({ courses: store.courses.slice(), selected: Array.from(store.selected), interests: { depts: Array.from(store.view.depts), pinned: Array.from(store.view.pinned) } });
+const undoAction = prev => prev.courses.length ? { label: '되돌리기', onClick: () => { store.setCourses(prev.courses, prev.selected, prev.interests); toast('이전 상태로 되돌렸습니다'); } } : null;
 const tooltip = {
   el: $('#tooltip'),
   show(content, x, y) { this.el.replaceChildren(...[].concat(content)); this.el.hidden = false; this.move(x, y); },
@@ -1197,7 +1346,7 @@ const tooltip = {
   hide() { this.el.hidden = true; }
 };
 function courseTooltip(id) {
-  const c = store.graph.byId.get(id); if (!c) return [];
+  const c = store.byId.get(id); if (!c) return [];
   const meta = [c.professor, typeof c.credits === 'number' ? c.credits + '학점' : null, c.room].filter(Boolean).join(' · ');
   const out = [h('div', { class: 'tt-title' }, TT.courseLabel(c))];
   if (meta) out.push(h('div', { class: 'tt-sub' }, meta));
@@ -1205,6 +1354,8 @@ function courseTooltip(id) {
   if (store.selected.has(id)) out.push(h('div', { class: 'tt-ok' }, '선택됨 · 클릭하면 해제'));
   else if (store.state.blocked.has(id)) {
     out.push(h('div', { class: 'tt-why' }, '선택 불가 — 선택한 수업과 충돌:', h('ul', null, TT.explainBlock(store.graph, store.selected, id).map(x => h('li', null, x.text)))));
+  } else if (!store.graph.byId.has(id)) {
+    out.push(h('div', { class: 'tt-sub' }, '그래프에 없는 과목입니다. 검색 결과에서 추가하세요.'));
   } else out.push(h('div', { class: 'tt-ok' }, '클릭하여 선택'));
   return out;
 }
@@ -1212,28 +1363,38 @@ function courseTooltip(id) {
 // ---------- Store ----------
 const store = {
   courses: [], selected: new Set(), hoverId: null, colors: new Map(), graph: TT.buildGraph([]), state: null, listeners: [],
+  byId: new Map(), view: { depts: new Set(), pinned: new Set() }, visible: new Set(),
   subscribe(fn) { this.listeners.push(fn); },
   emit(type) { this.listeners.forEach(fn => fn(type)); },
   recompute(opts) {
-    this.graph = TT.buildGraph(this.courses);
-    this.colors = TT.assignColors(this.courses.map(c => c.name), this.colors);
+    this.byId = new Map(this.courses.map(c => [c.id, c]));
+    const present = new Set(this.courses.map(TT.deptOf).filter(Boolean));
+    this.view = { depts: new Set([...this.view.depts].filter(d => present.has(d))), pinned: new Set([...this.view.pinned].filter(id => this.byId.has(id))) };
+    this.visible = TT.visibleIds(this.courses, { depts: this.view.depts, pinned: this.view.pinned, selected: this.selected });
+    const vis = this.courses.filter(c => this.visible.has(c.id));
+    this.graph = TT.buildGraph(vis);
+    this.colors = TT.assignColors(vis.map(c => c.name), this.colors);
     const pr = TT.pruneSelection(this.graph, this.selected, opts);
     this.selected = pr.selected;
     this.state = TT.selectionState(this.graph, this.selected);
-    if (this.hoverId && !this.graph.byId.has(this.hoverId)) this.hoverId = null;
+    if (this.hoverId && !this.byId.has(this.hoverId)) this.hoverId = null;
     return pr.dropped;
   },
-  setCourses(list, selectedIds) {
+  setCourses(list, selectedIds, interests) {
     this.courses = list.slice(); this.selected = new Set(selectedIds || []); this.hoverId = null;
+    this.view = { depts: new Set(interests && interests.depts || []), pinned: new Set(interests && interests.pinned || []) };
     const dropped = this.recompute(); this.emit('reset'); this.persist(); return dropped;
   },
-  addCourse(c) { this.courses.push(c); this.recompute(); this.emit('data'); this.persist(); },
+  addCourse(c) { this.courses.push(c); this.view.pinned.add(c.id); this.recompute(); this.emit('data'); this.persist(); },
   updateCourse(id, c) {
     const i = this.courses.findIndex(x => x.id === id); if (i < 0) return [];
     this.courses[i] = Object.assign({}, c, { id });
     const dropped = this.recompute({ preferDrop: [id] }); this.emit('data'); this.persist(); return dropped;
   },
   deleteCourse(id) { this.courses = this.courses.filter(c => c.id !== id); this.recompute(); this.emit('data'); this.persist(); },
+  toggleDept(d) { const s = new Set(this.view.depts); if (s.has(d)) s.delete(d); else s.add(d); this.view.depts = s; this.recompute(); this.emit('data'); this.persist(); },
+  clearDepts() { this.view.depts = new Set(); this.recompute(); this.emit('data'); this.persist(); },
+  togglePin(id) { const s = new Set(this.view.pinned); if (s.has(id)) s.delete(id); else s.add(id); this.view.pinned = s; this.recompute(); this.emit('data'); this.persist(); },
   toggleSelect(id) {
     const r = TT.toggleSelect(this.graph, this.selected, id);
     if (r.changed) { this.selected = r.selected; this.state = TT.selectionState(this.graph, this.selected); this.emit('selection'); this.persist(); }
@@ -1241,17 +1402,23 @@ const store = {
   },
   clearSelection() { if (!this.selected.size) return; this.selected = new Set(); this.state = TT.selectionState(this.graph, this.selected); this.emit('selection'); this.persist(); },
   setHover(id) { if (id === this.hoverId) return; this.hoverId = id; this.emit('hover'); },
-  persist() { try { localStorage.setItem(STORAGE_KEY, TT.toJSON(this.courses, this.selected)); } catch (e) {} },
+  // 선택한 과목 중 c와 동시에 들을 수 없는 과목 (그래프에 없는 과목에도 쓸 수 있다)
+  conflictsWithSelection(c) { return [...this.selected].map(id => this.byId.get(id)).filter(s => s && s.id !== c.id && TT.conflict(s, c)); },
+  persist() { try { localStorage.setItem(STORAGE_KEY, TT.toJSON(this.courses, this.selected, { interests: this.view })); } catch (e) {} },
   load() {
     try {
       const s = localStorage.getItem(STORAGE_KEY); if (!s) return false;
       const r = TT.coursesFromJSON(s); if (!r.courses.length && r.errors.length) return false;
-      this.courses = r.courses; this.selected = new Set(r.selected); this.recompute(); return true;
+      this.courses = r.courses; this.selected = new Set(r.selected);
+      this.view = { depts: new Set(r.interests.depts), pinned: new Set(r.interests.pinned) };
+      this.recompute(); return true;
     } catch (e) { return false; }
   },
   getState() {
     const blocked = {}; this.state.blocked.forEach((v, k) => { blocked[k] = v.slice(); });
-    return { courses: JSON.parse(JSON.stringify(this.courses)), selected: Array.from(this.selected), blocked, hoverId: this.hoverId, edges: this.graph.edges.map(e => ({ a: e.a, b: e.b, section: e.section, overlaps: e.overlaps.length })) };
+    return { courses: JSON.parse(JSON.stringify(this.courses)), selected: Array.from(this.selected), blocked, hoverId: this.hoverId,
+      visible: Array.from(this.visible), view: { depts: Array.from(this.view.depts), pinned: Array.from(this.view.pinned) },
+      edges: this.graph.edges.map(e => ({ a: e.a, b: e.b, section: e.section, overlaps: e.overlaps.length })) };
   }
 };
 
@@ -1347,6 +1514,7 @@ const graphView = {
     for (const [id, el] of Array.from(this.nodeEls)) if (!g.byId.has(id)) { el.remove(); this.nodeEls.delete(id); }
     g.nodes.forEach(c => { if (!this.nodeEls.has(c.id)) { const el = this.createNode(c); this.gNodes.append(el); this.nodeEls.set(c.id, el); } });
     this.emptyMsg.toggleAttribute('hidden', g.nodes.length > 0); // SVG 요소에는 .hidden 속성이 없다
+    this.emptyMsg.textContent = store.courses.length ? '왼쪽에서 관심 학과를 고르거나 과목을 검색해 추가하세요' : '과목을 추가하거나 샘플을 불러오세요';
     this.sim.setGraph(g.nodes, g.edges);
     this.updateStates(); this.updateHover();
     this.sim.reheat(1); this.render(); this.startLoop();
@@ -1387,7 +1555,9 @@ const gridView = {
   el: $('#grid'), hint: $('#grid-hint'),
   init() { store.subscribe(() => this.render()); },
   render() {
-    const courses = store.courses, days = TT.daysNeeded(courses), range = TT.timeRange(courses);
+    const hid = store.hoverId, hov = hid ? store.byId.get(hid) : null;
+    const courses = store.graph.nodes, span = hov ? courses.concat([hov]) : courses;
+    const days = TT.daysNeeded(span), range = TT.timeRange(span);
     const total = range.endMin - range.startMin, hours = total / 60;
     this.el.style.setProperty('--days', days.length); this.el.style.setProperty('--hours', hours);
     const pct = m => ((m - range.startMin) / total * 100).toFixed(3) + '%';
@@ -1398,8 +1568,8 @@ const gridView = {
     for (let m = range.startMin; m <= range.endMin; m += 60) timeCol.append(h('div', { class: 't', style: `top:${pct(m)}` }, TT.formatTime(m)));
     frag.append(timeCol);
     const cols = new Map(); days.forEach(d => { const col = h('div', { class: 'day-col' + (d >= 6 ? ' weekend' : ''), 'data-day': d }); cols.set(d, col); frag.append(col); });
-    const hid = store.hoverId, hov = hid ? store.graph.byId.get(hid) : null;
     const hovSlots = hov && !store.selected.has(hid) ? hov.slots : [];
+    const hovBlocked = hovSlots.length > 0 && store.conflictsWithSelection(hov).length > 0;
     courses.forEach(c => {
       if (!store.selected.has(c.id)) return;
       c.slots.forEach(s => {
@@ -1418,9 +1588,9 @@ const gridView = {
     });
     if (hov) hovSlots.forEach(s => {
       const dur = TT.toMin(s.end) - TT.toMin(s.start);
-      const ghost = h('div', { class: 'blk ghost' + (store.state.blocked.has(hid) ? ' blocked' : ''), style: `--h:${hueOf(hov)};top:${pct(TT.toMin(s.start))};height:${(dur / total * 100).toFixed(3)}%` },
+      const ghost = h('div', { class: 'blk ghost' + (hovBlocked ? ' blocked' : ''), style: `--h:${hueOf(hov)};top:${pct(TT.toMin(s.start))};height:${(dur / total * 100).toFixed(3)}%` },
         h('div', { class: 'n' }, hov.name, ' ', hov.section), h('div', { class: 'm' }, `${s.start}–${s.end}`));
-      cols.get(s.day).append(ghost);
+      if (cols.has(s.day)) cols.get(s.day).append(ghost);
     });
     this.el.replaceChildren(frag);
     const n = store.selected.size, cr = TT.totalCredits(courses, store.selected);
@@ -1436,10 +1606,10 @@ const listView = {
     const active = document.activeElement;
     const activeLi = active && active.closest ? active.closest('#course-list li') : null;
     const focusId = activeLi && active.classList.contains('pick') ? activeLi.dataset.id : null;
-    const courses = store.courses.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko') || a.section.localeCompare(b.section, 'ko', { numeric: true }));
+    const courses = store.graph.nodes.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko') || a.section.localeCompare(b.section, 'ko', { numeric: true }));
     this.ul.replaceChildren(...courses.map(c => {
       const state = store.selected.has(c.id) ? 'selected' : store.state.blocked.has(c.id) ? 'blocked' : 'normal';
-      const meta1 = [c.professor, typeof c.credits === 'number' ? c.credits + '학점' : null, c.room].filter(Boolean).join(' · ');
+      const meta1 = [c.code, c.kind, c.professor, typeof c.credits === 'number' ? c.credits + '학점' : null, c.room].filter(Boolean).join(' · ');
       const meta2 = c.slots.length ? c.slots.map(TT.slotText).join(', ') : '';
       const pick = h('button', { class: 'pick', type: 'button', 'aria-pressed': String(state === 'selected'), 'aria-disabled': state === 'blocked' ? 'true' : null },
         h('span', { class: 'dot', 'aria-hidden': 'true' }),
@@ -1452,6 +1622,7 @@ const listView = {
       pick.addEventListener('click', () => { const r = store.toggleSelect(c.id); if (!r.changed && r.reason) toast('선택할 수 없습니다: ' + r.reason.split('\n')[0], { type: 'error' }); });
       const li = h('li', { 'data-id': c.id, 'data-state': state, style: `--h:${hueOf(c)}`, class: store.hoverId === c.id ? 'hover' : '' }, pick,
         h('div', { class: 'ops' },
+          store.view.pinned.has(c.id) && (store.view.depts.size || store.courses.length > TT.VISIBLE_ALL_LIMIT) ? h('button', { class: 'btn small', type: 'button', 'aria-label': `${TT.courseLabel(c)} 그래프에서 빼기`, title: '직접 추가한 과목을 그래프에서 뺍니다', onclick: () => store.togglePin(c.id) }, '빼기') : null,
           h('button', { class: 'btn small', type: 'button', 'aria-label': `${TT.courseLabel(c)} 편집`, onclick: () => formView.open(c) }, '편집'),
           h('button', { class: 'btn small danger', type: 'button', 'aria-label': `${TT.courseLabel(c)} 삭제`, onclick: () => { if (confirm(`'${TT.courseLabel(c)}' 과목을 삭제할까요?`)) store.deleteCourse(c.id); } }, '삭제')));
       li.addEventListener('pointerenter', () => store.setHover(c.id));
@@ -1460,11 +1631,61 @@ const listView = {
     }));
     if (focusId) { const b = this.ul.querySelector(`li[data-id="${CSS.escape(focusId)}"] .pick`); if (b) b.focus(); }
     this.empty.hidden = courses.length > 0;
-    this.count.textContent = courses.length ? `${courses.length}개` : '';
+    this.empty.innerHTML = store.courses.length ? '그래프에 올린 과목이 없습니다.<br>위에서 관심 학과를 고르거나 과목을 검색해 추가하세요.' : '과목이 없습니다.<br>「＋ 과목 추가」 또는 「파일 불러오기」로 시작하세요.';
+    this.count.textContent = !store.courses.length ? '' : courses.length < store.courses.length ? `${courses.length}개 표시 · 전체 ${store.courses.length}개` : `${courses.length}개`;
     const n = store.selected.size, cr = TT.totalCredits(store.courses, store.selected);
     this.summary.textContent = `선택 ${n}과목${cr ? ` · ${cr}학점` : ''}`;
   },
   updateHover() { this.ul.querySelectorAll('li').forEach(li => li.classList.toggle('hover', li.dataset.id === store.hoverId)); }
+};
+
+// ---------- 관심 학과 / 전체 과목 검색 ----------
+const interestView = {
+  box: $('#interest'), row: $('#dept-row'), chips: $('#dept-chips'), clear: $('#btn-clear-depts'), input: $('#course-search'), results: $('#search-results'),
+  init() {
+    store.subscribe(type => { if (type !== 'hover') this.render(); });
+    this.input.addEventListener('input', () => this.renderResults());
+    this.input.addEventListener('keydown', e => { if (e.key === 'Escape' && this.input.value) { e.stopPropagation(); this.input.value = ''; this.renderResults(); } });
+    this.clear.addEventListener('click', () => store.clearDepts());
+  },
+  render() {
+    const summary = TT.deptSummary(store.courses);
+    const show = summary.length > 0 || store.courses.length > TT.VISIBLE_ALL_LIMIT;
+    this.box.hidden = !show;
+    if (!show) return;
+    const focusDept = document.activeElement && document.activeElement.classList.contains('chip') ? document.activeElement.dataset.dept : null;
+    this.row.hidden = this.chips.hidden = summary.length === 0;
+    this.chips.replaceChildren(...summary.map(({ dept, count }) => h('button', { class: 'chip', type: 'button', 'data-dept': dept, 'aria-pressed': String(store.view.depts.has(dept)), onclick: () => store.toggleDept(dept) }, TT.deptLabel(dept), h('span', { class: 'cnt' }, count))));
+    if (focusDept != null) { const b = [...this.chips.children].find(x => x.dataset.dept === focusDept); if (b) b.focus(); }
+    this.clear.hidden = store.view.depts.size === 0;
+    this.renderResults();
+  },
+  renderResults() {
+    const q = this.input.value;
+    if (!TT.nfc(q)) { this.results.hidden = true; this.results.replaceChildren(); return; }
+    const focusId = document.activeElement && document.activeElement.classList.contains('res') ? document.activeElement.dataset.id : null;
+    const LIMIT = 50, hits = TT.searchCourses(store.courses, q, LIMIT + 1);
+    const items = hits.slice(0, LIMIT).map(c => {
+      const pinned = store.view.pinned.has(c.id), sel = store.selected.has(c.id), vis = store.visible.has(c.id);
+      const clash = !sel && store.conflictsWithSelection(c).length > 0;
+      const [tag, cls] = pinned ? ['✓ 추가됨', 'on'] : sel ? ['선택됨', 'on'] : vis ? ['표시 중', ''] : ['＋ 추가', 'add'];
+      const info = [TT.deptLabel(TT.deptOf(c) || ''), c.professor, c.slots.length ? c.slots.map(TT.slotText).join(', ') : '시간 미정'].filter(Boolean).join(' · ');
+      const btn = h('button', { class: 'res', type: 'button', 'data-id': c.id, 'aria-pressed': String(pinned), title: pinned ? '그래프에서 빼기' : '그래프에 추가' },
+        h('span', null,
+          h('span', { class: 'r1' }, c.code ? h('span', { class: 'code' }, c.code) : null, c.name, ' ', c.section),
+          h('span', { class: 'r2' }, info, clash ? h('span', { class: 'warn' }, ' · 선택한 수업과 충돌') : null)),
+        h('span', { class: 'tag ' + cls }, tag));
+      btn.addEventListener('click', () => store.togglePin(c.id));
+      btn.addEventListener('pointerenter', () => store.setHover(c.id));
+      btn.addEventListener('pointerleave', () => store.setHover(null));
+      return h('li', null, btn);
+    });
+    if (!items.length) items.push(h('li', { class: 'more' }, '검색 결과가 없습니다'));
+    if (hits.length > LIMIT) items.push(h('li', { class: 'more' }, `결과가 많아 ${LIMIT}개까지만 보여 줍니다. 검색어를 더 구체적으로 적어 보세요.`));
+    this.results.replaceChildren(...items);
+    this.results.hidden = false;
+    if (focusId) { const b = this.results.querySelector(`.res[data-id="${CSS.escape(focusId)}"]`); if (b) b.focus(); }
+  }
 };
 
 // ---------- Course form ----------
@@ -1536,7 +1757,7 @@ function importText(text, opts = {}) {
     if (!confirm(q)) return null;
   }
   const prev = snapshot();
-  store.setCourses(res.courses, res.selected);
+  store.setCourses(res.courses, res.selected, res.interests);
   let msg = `${res.courses.length}개 과목 불러옴 (${res.format.toUpperCase()})`;
   if (res.errors.length) msg += `, ${res.errors.length}${unit} 무시됨`;
   if (res.selected.length) msg += `, ${res.selected.length}개 선택 복원`;
@@ -1568,22 +1789,22 @@ function initImportExport() {
 }
 
 // ---------- 초기화 ----------
-graphView.init(); gridView.init(); listView.init(); formView.init(); initImportExport();
+graphView.init(); gridView.init(); listView.init(); interestView.init(); formView.init(); initImportExport();
 $('#btn-add').addEventListener('click', () => formView.open(null));
 $('#btn-clear-sel').addEventListener('click', () => store.clearSelection());
 $('#btn-sample').addEventListener('click', () => {
   if (store.courses.length && !confirm('현재 과목과 선택을 모두 지우고 샘플 데이터로 되돌릴까요?')) return;
   const prev = snapshot();
-  store.setCourses(TT.sampleCourses(), []); toast('샘플 데이터를 불러왔습니다', { action: undoAction(prev) });
+  store.setCourses(TT.sampleCourses(), [], null); toast('샘플 데이터를 불러왔습니다', { action: undoAction(prev) });
 });
 $('#btn-theme').addEventListener('click', () => {
   const next = currentTheme() === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = next; try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') tooltip.hide(); });
-if (!store.load()) store.setCourses(TT.sampleCourses(), []); else store.emit('data');
+if (!store.load()) store.setCourses(TT.sampleCourses(), [], null); else store.emit('reset');
 
-window.app = { store, graphView, gridView, listView, formView, sim: graphView.sim, importText, readFileText, exportJSON, toast };
+window.app = { store, graphView, gridView, listView, interestView, formView, sim: graphView.sim, importText, readFileText, exportJSON, toast };
 })();
 </script>
 </body>
