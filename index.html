@@ -140,6 +140,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #search-results .tag.add { color: var(--accent); font-weight: 600; }
 #search-results .tag.on { color: var(--ok); font-weight: 600; }
 #search-results .more { font-size: 11px; color: var(--muted); padding: 6px 8px; }
+.chips.levels { max-height: none; }
+.chips.levels .chip { padding: 2px 9px; font-size: 11px; }
+.note { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.5; }
+.note a { color: var(--accent); }
 
 /* ---------- graph ---------- */
 #graph-pane { background: var(--bg); position: relative; }
@@ -183,6 +187,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @keyframes shake { 0%,100%{transform:translate(0,0)} 25%{transform:translate(-4px,0)} 75%{transform:translate(4px,0)} }
 .node.shake > g { animation: shake .3s; }
 #graph .empty-msg { fill: var(--muted); font-size: 15px; text-anchor: middle; }
+/* 노드가 많을 때: 분반 숫자를 작게, 과목명은 마우스를 올린 과목·이웃·선택한 과목만 */
+#graph.dense .node .sec { font-size: 9px; }
+#graph.dense .node circle { stroke-width: 2.2; }
+#graph.dense .node .name { display: none; }
+#graph.dense .node.hover .name, #graph.dense .node.neighbor .name, #graph.dense .node[data-state="selected"] .name { display: inline; }
+#graph.dense .edge { stroke-width: 1; }
 
 /* ---------- timetable grid ---------- */
 #grid-scroll { flex: 1; min-height: 0; overflow: auto; }
@@ -289,7 +299,8 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
 @media (max-width: 1024px) {
   body { overflow: auto; }
   .layout { grid-template-columns: 1fr; height: auto; }
-  #sidebar { border-right: none; border-bottom: 1px solid var(--line); max-height: 320px; }
+  #sidebar { border-right: none; border-bottom: 1px solid var(--line); }
+  #sidebar .pane-body { max-height: 300px; }
   #graph-pane { height: 520px; }
   #grid-pane { border-left: none; border-top: 1px solid var(--line); height: 560px; }
   .topbar { height: auto; padding: 8px 12px; flex-wrap: wrap; }
@@ -302,7 +313,8 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
   <h1>시간표 그래프 <span class="sub">겹치는 수업은 간선으로, 시간표는 독립집합으로</span></h1>
   <div class="actions">
     <button class="btn primary" id="btn-add" type="button">＋ 과목 추가</button>
-    <button class="btn" id="btn-import" type="button" title="JSON 또는 CSV 파일 (드래그 앤 드롭도 가능)">파일 불러오기</button>
+    <button class="btn" id="btn-gist" type="button" title="GIST 개설강좌 전체를 학기별로 불러옵니다">GIST 강의</button>
+    <button class="btn" id="btn-import" type="button" title="JSON, CSV, 엑셀(.xls/.xlsx) 파일 (드래그 앤 드롭도 가능)">파일 불러오기</button>
     <button class="btn" id="btn-export" type="button">JSON 내보내기</button>
     <button class="btn" id="btn-sample" type="button" title="내장 샘플 데이터로 되돌립니다">샘플로 초기화</button>
     <button class="btn" id="btn-theme" type="button" title="라이트/다크 전환" aria-label="라이트/다크 전환">🌓</button>
@@ -315,6 +327,7 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
     <div id="interest" hidden>
       <div class="interest-row" id="dept-row"><span>관심 학과</span><button class="linkbtn" id="btn-clear-depts" type="button" hidden>모두 해제</button></div>
       <div id="dept-chips" class="chips" role="group" aria-label="관심 학과"></div>
+      <div id="level-chips" class="chips levels" role="group" aria-label="과정" hidden></div>
       <div>
         <input id="course-search" type="search" placeholder="전체 과목 검색 · 과목명, 교과목번호, 교수" autocomplete="off" aria-label="전체 과목 검색">
         <ul id="search-results" hidden aria-label="검색 결과"></ul>
@@ -378,10 +391,24 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
   </form>
 </dialog>
 
+<dialog id="gist-dialog" aria-labelledby="gist-title">
+  <form id="gist-form" method="dialog" novalidate>
+    <h2 id="gist-title">GIST 개설강좌 불러오기</h2>
+    <p class="note">학생 프로젝트 <a href="https://github.com/Gijol/gijol-v2" target="_blank" rel="noopener">Gijol</a>이 ZEUS 개설강좌를 정리해 공개한 데이터(MIT 라이선스)를 받아옵니다. 공식 자료보다 늦거나 다를 수 있으니, 수강신청 전에는 ZEUS에서 한 번 더 확인하세요.</p>
+    <label class="field">학기 (예: 2026-2)<input name="term" value="2026-2" pattern="\d{4}-[12]" autocomplete="off" required></label>
+    <p class="note">공식 파일을 직접 쓰려면 ZEUS 수강신청 사이트의 개설강좌 조회에서 엑셀로 내려받거나, 학사공지의 「학사교과 시간표」 XLS를 받아 「파일 불러오기」로 여세요.</p>
+    <ul class="form-errors" id="gist-errors" role="alert"></ul>
+    <div class="dialog-actions">
+      <button class="btn" type="button" id="btn-gist-cancel">취소</button>
+      <button class="btn primary" type="submit" id="btn-gist-load">불러오기</button>
+    </div>
+  </form>
+</dialog>
+
 <div id="tooltip" role="tooltip" hidden></div>
 <div id="toast-wrap" aria-live="polite"></div>
 <div id="drop-overlay" hidden>파일을 여기에 놓으면 불러옵니다 (JSON / CSV)</div>
-<input type="file" id="file-input" accept=".json,.csv,application/json,text/csv" hidden>
+<input type="file" id="file-input" accept=".json,.csv,.xls,.xlsx,application/json,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
 <div id="selftest" hidden></div>
 
 <!-- ======================================================================
@@ -492,7 +519,7 @@ TT.normalizeCourse = function (raw, opts) {
   const course = {
     id: raw.id != null && String(raw.id).trim() ? String(raw.id).trim() : TT.uid(),
     code: TT.normalizeCode(raw.code), name: name, section: section,
-    dept: TT.nfc(raw.dept) || null, kind: TT.nfc(raw.kind) || null,
+    dept: TT.nfc(raw.dept) || null, kind: TT.nfc(raw.kind) || null, level: TT.nfc(raw.level) || null,
     professor: professor, credits: credits, room: room, slots: slots
   };
   return { ok: errors.length === 0, course: course, errors: errors };
@@ -653,19 +680,57 @@ TT.parseCSV = function (text) {
   return { rows: rows, lines: lines, unterminated: inQ, quoteLine: inQ ? quoteLine : 0 };
 };
 
+// 한 칸에 적힌 수업 시간을 슬롯으로 나눈다.
+// 예) "화 14:30~16:00\n목 14:30~16:00", "화/목 10:30~12:00", "월수 09:00-10:30", "Mon 9:00~10:30, Wed 9:00~10:30"
+// "All 00:00~00:00", "미정", 빈 칸은 시간 미정(tba)으로 본다.
+const SCHED_DAY = '(?:[월화수목금토일](?:요일)?|(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*)';
+const SCHED_RE = new RegExp('(' + SCHED_DAY + '(?:\\s*[\\/·.,]?\\s*' + SCHED_DAY + ')*)\\s*\\(?\\s*(\\d{1,2}:\\d{2})\\s*[~\\-–—]\\s*(\\d{1,2}:\\d{2})\\s*\\)?', 'gi');
+TT.parseScheduleText = function (text) {
+  const out = { slots: [], errors: [], tba: false };
+  const s = TT.nfc(text);
+  if (!s || /^(all\s*)?00:00\s*[~\-–—]\s*00:00$/i.test(s) || /^(미정|tba|추후\s*공지|-)$/i.test(s)) { out.tba = true; return out; }
+  if (/^all\b/i.test(s)) { out.tba = true; return out; }
+  let m;
+  SCHED_RE.lastIndex = 0;
+  while ((m = SCHED_RE.exec(s))) {
+    const days = m[1].replace(/요일/g, '').match(/[월화수목금토일]|mon|tue|wed|thu|fri|sat|sun/gi) || []; // '월요일'의 '일'을 일요일로 읽지 않도록
+    const start = m[2], end = m[3];
+    days.forEach(function (d) {
+      const r = TT.normalizeSlot({ day: d, start: start, end: end });
+      if (!r.ok) { out.errors.push(m[0].trim() + ': ' + r.error); return; }
+      if (!out.slots.some(function (x) { return x.day === r.slot.day && x.start === r.slot.start && x.end === r.slot.end; })) out.slots.push(r.slot);
+    });
+  }
+  const rest = s.replace(SCHED_RE, ' ').replace(/[\s,;\/·]+/g, ' ').trim();
+  if (rest) out.errors.push('시간 표기를 읽을 수 없습니다: "' + rest + '"');
+  if (!out.slots.length && !out.errors.length) out.tba = true;
+  return out;
+};
+
 const CSV_ALIASES = {
   name: ['name', '과목', '과목명', 'course', 'title', '수업', '수업명', '교과목', '교과목명'],
   section: ['section', '분반', 'sec', 'class'],
-  professor: ['professor', '교수', '교수명', 'prof', '담당교수', '강사'],
-  credits: ['credits', 'credit', '학점'],
+  professor: ['professor', '교수', '교수명', 'prof', '담당교수', '담당교원', '교강사', '강사', 'instructor', 'instructors'],
+  credits: ['credits', 'credit', '학점', '강/실/학', '강-실-학'],
   room: ['room', '강의실', '장소', '강의장소'],
-  code: ['code', 'course_code', 'coursecode', 'course no', 'course number', '교과목번호', '과목번호', '과목코드', '교과목코드', '학수번호'],
-  dept: ['dept', 'department', 'major', '개설학과', '개설학부', '개설전공', '학과', '학부', '전공', '소속'],
+  code: ['code', 'course_code', 'coursecode', 'courseno', 'coursenumber', '교과목번호', '과목번호', '과목코드', '교과목코드', '학수번호'],
+  codeSection: ['교과목-분반', '과목-분반', '교과목번호-분반', '학수번호-분반', 'code-section'],
+  dept: ['dept', 'department', 'major', '개설부서', '개설학과', '개설학부', '개설전공', '학과', '학부', '전공', '소속'],
   kind: ['kind', 'category', 'type', '이수구분', '과목구분', '구분'],
+  level: ['level', 'program', '과정', '과정구분', '학위과정'],
+  schedule: ['시간표', '강의시간', '수업시간', '강의시간표', '시간', 'schedule', 'time', 'times', 'meetings'],
   day: ['day', '요일'],
   start: ['start', '시작', '시작시간', 'begin', 'from'],
   end: ['end', '종료', '종료시간', 'finish', 'to']
 };
+const headerKey = function (h) { return TT.nfc(h).toLowerCase().replace(/\s+/g, ''); };
+const ALIAS_KEYS = {};
+Object.keys(CSV_ALIASES).forEach(function (f) { ALIAS_KEYS[f] = CSV_ALIASES[f].map(headerKey); });
+// "3/0/3"(강/실/학) → 마지막 숫자가 학점
+const creditsValue = function (v) { const t = TT.nfc(v); if (t.indexOf('/') >= 0) { const parts = t.split('/'); return TT.nfc(parts[parts.length - 1]); } return t; };
+// "이름[교번]" 여러 줄 → "이름, 이름"
+const cleanPeople = function (v) { return TT.nfc(v).replace(/\[[^\]]*\]/g, '').split(/\r?\n|,|;/).map(TT.nfc).filter(Boolean).join(', '); };
+const cleanRooms = function (v) { const seen = []; TT.nfc(v).split(/\r?\n|;/).map(TT.nfc).filter(Boolean).forEach(function (r) { if (seen.indexOf(r) < 0) seen.push(r); }); return seen.join(' / '); };
 TT.coursesFromCSV = function (text) {
   const errors = [], warnings = [];
   const parsed = TT.parseCSV(text);
@@ -673,38 +738,62 @@ TT.coursesFromCSV = function (text) {
   const rows = [], lines = [];
   parsed.rows.forEach(function (r, i) { if (r.some(function (c) { return TT.nfc(c) !== ''; })) { rows.push(r); lines.push(parsed.lines[i]); } });
   if (!rows.length) return { courses: [], errors: [{ line: 0, message: '비어 있는 파일입니다' }], warnings: warnings };
-  const header = rows[0].map(function (h) { return TT.nfc(h).toLowerCase(); });
+  // 제목 줄이 위에 있는 엑셀도 있으므로, 과목명 열이 있는 첫 줄을 헤더로 쓴다
+  let hi = -1;
+  for (let i = 0; i < Math.min(rows.length, 20) && hi < 0; i++) {
+    if (rows[i].some(function (h) { const k = headerKey(h); return ALIAS_KEYS.name.indexOf(k) >= 0; })) hi = i;
+  }
+  if (hi < 0) return { courses: [], errors: [{ line: lines[0], message: '과목명(name) 열이 없습니다. 헤더 줄에 과목명·교과목명 같은 열 이름이 있어야 합니다' }], warnings: warnings };
+  const header = rows[hi].map(headerKey);
   const col = {};
-  Object.keys(CSV_ALIASES).forEach(function (f) {
-    const idx = header.findIndex(function (h) { return CSV_ALIASES[f].indexOf(h) >= 0; });
+  Object.keys(ALIAS_KEYS).forEach(function (f) {
+    const idx = header.findIndex(function (h) { return ALIAS_KEYS[f].indexOf(h) >= 0; });
     if (idx >= 0) col[f] = idx;
   });
-  if (col.name == null) return { courses: [], errors: [{ line: lines[0], message: '과목명(name) 열이 없습니다. 첫 줄은 헤더여야 합니다' }], warnings: warnings };
+  const useSchedule = col.schedule != null && col.day == null;
   const get = function (r, f) { return col[f] == null ? '' : TT.nfc(r[col[f]]); };
   const groups = new Map();
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = hi + 1; i < rows.length; i++) {
     const r = rows[i], line = lines[i];
     const name = get(r, 'name');
     if (!name) { errors.push({ line: line, message: '과목명이 비어 있습니다' }); continue; }
-    const day = get(r, 'day'), start = get(r, 'start'), end = get(r, 'end');
-    let slot = null;
-    if (day || start || end) {
-      if (!(day && start && end)) { errors.push({ line: line, message: '요일·시작·종료를 모두 적거나 모두 비워 두세요' }); continue; }
-      const ns = TT.normalizeSlot({ day: day, start: start, end: end });
-      if (!ns.ok) { errors.push({ line: line, message: ns.error }); continue; }
-      slot = ns.slot;
+    let slots = [];
+    if (useSchedule) {
+      const ps = TT.parseScheduleText(col.schedule == null ? '' : r[col.schedule]);
+      if (ps.errors.length) { errors.push({ line: line, message: name + ': ' + ps.errors.join(', ') }); continue; }
+      slots = ps.slots;
+    } else {
+      const day = get(r, 'day'), start = get(r, 'start'), end = get(r, 'end');
+      if (day || start || end) {
+        if (!(day && start && end)) { errors.push({ line: line, message: '요일·시작·종료를 모두 적거나 모두 비워 두세요' }); continue; }
+        const ns = TT.normalizeSlot({ day: day, start: start, end: end });
+        if (!ns.ok) { errors.push({ line: line, message: ns.error }); continue; }
+        slots = [ns.slot];
+      }
     }
-    const section = get(r, 'section') || '01';
-    const code = get(r, 'code');
+    let code = get(r, 'code'), section = get(r, 'section');
+    const cs = get(r, 'codeSection');
+    if (cs) {
+      const m = /^(.*?)[-_ ](\d{1,3})$/.exec(cs);
+      if (!code) code = m ? m[1] : cs;
+      if (!section && m) section = m[2];
+    }
+    section = section || '01';
     const key = TT.courseKey({ code: code, name: name, section: section });
-    if (!groups.has(key)) groups.set(key, { code: code, name: name, section: section, dept: null, kind: null, professor: null, credits: null, room: null, slots: [], line: line });
+    if (!groups.has(key)) {
+      const nc = TT.normalizeCode(code);
+      groups.set(key, { id: nc ? nc + '-' + section : undefined, code: code, name: name, section: section, dept: null, kind: null, level: null, professor: null, credits: null, room: null, slots: [], line: line });
+    }
     const g = groups.get(key);
     if (!g.dept && get(r, 'dept')) g.dept = get(r, 'dept');
     if (!g.kind && get(r, 'kind')) g.kind = get(r, 'kind');
-    if (!g.professor && get(r, 'professor')) g.professor = get(r, 'professor');
-    if (g.credits == null && get(r, 'credits') !== '') g.credits = get(r, 'credits');
-    if (!g.room && get(r, 'room')) g.room = get(r, 'room');
-    if (slot && !g.slots.some(function (s) { return s.day === slot.day && s.start === slot.start && s.end === slot.end; })) g.slots.push(slot);
+    if (!g.level && get(r, 'level')) g.level = get(r, 'level');
+    if (!g.professor && get(r, 'professor')) g.professor = cleanPeople(get(r, 'professor'));
+    if (g.credits == null && get(r, 'credits') !== '') g.credits = creditsValue(get(r, 'credits'));
+    if (!g.room && get(r, 'room')) g.room = cleanRooms(col.room == null ? '' : r[col.room]);
+    slots.forEach(function (slot) {
+      if (!g.slots.some(function (s) { return s.day === slot.day && s.start === slot.start && s.end === slot.end; })) g.slots.push(slot);
+    });
   }
   const courses = [];
   groups.forEach(function (g) {
@@ -713,6 +802,36 @@ TT.coursesFromCSV = function (text) {
     else errors.push({ line: g.line, message: g.name + ' ' + g.section + ': ' + n.errors.join(', ') });
   });
   return { courses: courses, errors: errors, warnings: warnings };
+};
+
+// Gijol(gijol-v2) 정리본 JSON: { items: [{ course_code, section, title, department, category, program, hours, meetings, instructors }] }
+TT.isGijolDoc = function (d) {
+  return !!(d && typeof d === 'object' && Array.isArray(d.items) && d.items.length && d.items[0] && typeof d.items[0] === 'object' && 'course_code' in d.items[0] && 'meetings' in d.items[0]);
+};
+TT.coursesFromGijol = function (data) {
+  const errors = [], warnings = [], courses = [], keys = new Set();
+  data.items.forEach(function (it, i) {
+    if (!it || typeof it !== 'object') return;
+    const code = TT.normalizeCode(it.course_code), section = TT.nfc(it.section) || '01';
+    const meetings = Array.isArray(it.meetings) ? it.meetings.filter(function (m) { return m && !(m.start === m.end); }) : [];
+    const rooms = [];
+    meetings.forEach(function (m) { const r = TT.nfc(m.room); if (r && rooms.indexOf(r) < 0) rooms.push(r); });
+    const slots = [];
+    meetings.forEach(function (m) { if (!slots.some(function (x) { return x.day === m.day && x.start === m.start && x.end === m.end; })) slots.push({ day: m.day, start: m.start, end: m.end }); });
+    const n = TT.normalizeCourse({
+      id: code ? code + '-' + section : undefined, code: code, name: it.title, section: section,
+      dept: it.department, kind: it.category, level: it.program,
+      professor: (Array.isArray(it.instructors) ? it.instructors : []).map(function (p) { return TT.nfc(p && p.name); }).filter(Boolean).join(', ') || null,
+      credits: it.hours && it.hours.credits != null ? it.hours.credits : null,
+      room: rooms.join(' / ') || null, slots: slots
+    });
+    const label = (it.course_code || '?') + '-' + (it.section || '?');
+    if (!n.ok) { errors.push({ line: 0, message: (i + 1) + '번째 분반(' + label + '): ' + n.errors.join(', ') }); return; }
+    const key = TT.courseKey(n.course);
+    if (keys.has(key)) { warnings.push('중복 분반 건너뜀: ' + label); return; }
+    keys.add(key); courses.push(n.course);
+  });
+  return { courses: courses, selected: [], interests: { depts: [], pinned: [], levels: [] }, errors: errors, warnings: warnings };
 };
 
 TT.coursesFromJSON = function (text) {
@@ -746,7 +865,8 @@ TT.coursesFromJSON = function (text) {
   const it = data.interests && typeof data.interests === 'object' ? data.interests : {};
   const interests = {
     depts: Array.isArray(it.depts) ? it.depts.map(TT.nfc).filter(Boolean) : [],
-    pinned: Array.isArray(it.pinned) ? it.pinned.map(function (id) { return String(id == null ? '' : id).trim(); }).filter(function (id) { return ids.has(id); }) : []
+    pinned: Array.isArray(it.pinned) ? it.pinned.map(function (id) { return String(id == null ? '' : id).trim(); }).filter(function (id) { return ids.has(id); }) : [],
+    levels: Array.isArray(it.levels) ? it.levels.map(TT.nfc).filter(Boolean) : []
   };
   return { courses: courses, selected: selected, interests: interests, errors: errors, warnings: warnings };
 };
@@ -756,10 +876,15 @@ TT.sniffFormat = function (text) {
   return (t[0] === '{' || t[0] === '[') ? 'json' : 'csv';
 };
 TT.importAny = function (text) {
-  const fmt = TT.sniffFormat(text);
-  const res = fmt === 'json' ? TT.coursesFromJSON(text) : TT.coursesFromCSV(text);
+  let fmt = TT.sniffFormat(text), res;
+  if (fmt === 'json') {
+    let data = null;
+    try { data = JSON.parse(String(text).replace(/^\uFEFF/, '')); } catch (e) { data = null; }
+    if (TT.isGijolDoc(data)) { fmt = 'gijol'; res = TT.coursesFromGijol(data); }
+    else res = TT.coursesFromJSON(text);
+  } else res = TT.coursesFromCSV(text);
   if (!res.selected) res.selected = [];
-  if (!res.interests) res.interests = { depts: [], pinned: [] };
+  if (!res.interests) res.interests = { depts: [], pinned: [], levels: [] };
   res.format = fmt;
   return res;
 };
@@ -776,6 +901,7 @@ TT.toJSON = function (courses, selected, opts) {
       o.name = c.name; o.section = c.section;
       if (c.dept) o.dept = c.dept;
       if (c.kind) o.kind = c.kind;
+      if (c.level) o.level = c.level;
       o.professor = c.professor; o.credits = c.credits; o.room = c.room;
       o.slots = c.slots.map(function (s) { return { day: TT.dayLabel(s.day), start: s.start, end: s.end }; });
       return o;
@@ -784,14 +910,18 @@ TT.toJSON = function (courses, selected, opts) {
   };
   const itDepts = opts.interests ? Array.from(opts.interests.depts || []) : [];
   const itPinned = opts.interests ? Array.from(opts.interests.pinned || []) : [];
-  if (itDepts.length || itPinned.length) doc.interests = { depts: itDepts, pinned: itPinned };
+  const itLevels = opts.interests ? Array.from(opts.interests.levels || []) : [];
+  if (itDepts.length || itPinned.length || itLevels.length) {
+    doc.interests = { depts: itDepts, pinned: itPinned };
+    if (itLevels.length) doc.interests.levels = itLevels;
+  }
   return JSON.stringify(doc, null, 2);
 };
 TT.toCSV = function (courses) {
   const q = function (v) { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const out = ['code,name,section,dept,kind,professor,credits,room,day,start,end'];
+  const out = ['code,name,section,dept,kind,level,professor,credits,room,day,start,end'];
   courses.forEach(function (c) {
-    const base = [c.code, c.name, c.section, c.dept, c.kind, c.professor, c.credits, c.room].map(q).join(',');
+    const base = [c.code, c.name, c.section, c.dept, c.kind, c.level, c.professor, c.credits, c.room].map(q).join(',');
     if (!c.slots.length) out.push(base + ',,,');
     c.slots.forEach(function (s) { out.push(base + ',' + [TT.dayLabel(s.day), s.start, s.end].map(q).join(',')); });
   });
@@ -811,14 +941,22 @@ TT.deptSummary = function (courses) {
 // 그래프에 올릴 과목: 선택한 과목 + 직접 추가한 과목 + 관심 학과의 과목
 TT.visibleIds = function (courses, view) {
   view = view || {};
-  const depts = view.depts || new Set(), pinned = view.pinned || new Set(), selected = view.selected || new Set();
+  const depts = view.depts || new Set(), pinned = view.pinned || new Set(), selected = view.selected || new Set(), levels = view.levels || new Set();
   // 학과를 고르지 않았고 과목이 적으면 전부 보인다 (직접 추가한 과목이 있어도 마찬가지)
   const showAll = depts.size === 0 && courses.length <= TT.VISIBLE_ALL_LIMIT;
   const out = new Set();
   courses.forEach(function (c) {
-    if (showAll || selected.has(c.id) || pinned.has(c.id) || depts.has(TT.deptOf(c))) out.add(c.id);
+    const levelOk = !levels.size || !c.level || levels.has(c.level); // 과정 정보가 없는 과목은 숨기지 않는다
+    if (showAll || selected.has(c.id) || pinned.has(c.id) || (depts.has(TT.deptOf(c)) && levelOk)) out.add(c.id);
   });
   return out;
+};
+TT.levelSummary = function (courses) {
+  const order = ['학사', '석사', '박사', '석박통합', '대학원'];
+  const m = new Map();
+  courses.forEach(function (c) { if (c.level) m.set(c.level, (m.get(c.level) || 0) + 1); });
+  return Array.from(m, function (e) { return { level: e[0], count: e[1] }; })
+    .sort(function (a, b) { const ia = order.indexOf(a.level), ib = order.indexOf(b.level); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.level.localeCompare(b.level, 'ko'); });
 };
 TT.searchCourses = function (courses, query, limit) {
   const q = TT.nfc(query).toLowerCase().replace(/\s+/g, '');
@@ -850,7 +988,7 @@ TT.mulberry32 = function (seed) {
 
 TT.Force = function (opts) {
   opts = opts || {};
-  this.W = opts.W || 800; this.H = opts.H || 600; this.R = opts.R || 22;
+  this.W = opts.W || 800; this.H = opts.H || 600; this.R0 = this.R = opts.R || 22;
   // 원 아래 과목명 라벨이 잘리지 않도록 좌우·아래 여백을 넉넉히 둔다
   this.PAD_X = opts.PAD_X || 58; this.PAD_T = opts.PAD_T || 30; this.PAD_B = opts.PAD_B || 52;
   this.K_REPEL = 16000; this.L_EDGE = 170; this.K_SPRING = 0.03; this.K_GRAVITY = 0.004; this.K_COLLIDE = 0.5;
@@ -877,8 +1015,12 @@ TT.Force.prototype.setGraph = function (courses, edges) {
   });
   this.nodes = nodes; this.byId = byId;
   this.edgeRefs = (edges || []).map(function (e) { return [byId.get(e.a), byId.get(e.b)]; }).filter(function (p) { return p[0] && p[1]; });
-  this.gravity = this.K_GRAVITY * Math.min(1.6, Math.sqrt(12 / Math.max(n, 1)) + 0.3);
+  // 노드가 많으면 고립 노드가 가장자리에 붙지 않도록 중심 인력을 키운다 (실측: 155노드에서 가장자리 22→7개)
+  this.gravity = this.K_GRAVITY * (n > 40 ? 2.5 : Math.min(1.6, Math.sqrt(12 / Math.max(n, 1)) + 0.3));
   this.repel = this.K_REPEL * Math.min(1, 16 / Math.max(n, 1));
+  // 노드가 많으면 원을 줄이고 간선도 짧게 해서 화면 안에 들어가게 한다
+  this.R = this.R0 * (n > 40 ? Math.max(0.5, Math.sqrt(40 / n)) : 1);
+  this.L = this.L_EDGE * (this.R / this.R0);
 };
 TT.Force.prototype.reheat = function (a) { this.alpha = Math.max(this.alpha, a == null ? 1 : a); this.running = this.nodes.length > 0; };
 TT.Force.prototype.pin = function (id, x, y) { const nd = this.byId.get(id); if (nd) { nd.fx = x; nd.fy = y; nd.x = x; nd.y = y; nd.vx = nd.vy = 0; } };
@@ -904,7 +1046,7 @@ TT.Force.prototype.step = function () {
   for (let k = 0; k < this.edgeRefs.length; k++) {
     const a = this.edgeRefs[k][0], b = this.edgeRefs[k][1];
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
-    const f = this.K_SPRING * (d - this.L_EDGE);
+    const f = this.K_SPRING * (d - (this.L || this.L_EDGE));
     a.ax += f * dx / d; a.ay += f * dy / d; b.ax -= f * dx / d; b.ay -= f * dy / d;
   }
   const g = this.gravity || this.K_GRAVITY;
@@ -1093,9 +1235,70 @@ TT.runSelfTests = function () {
     eq(TT.searchCourses(many, 'gs', 10).length, 10, '개수 제한');
     const doc = TT.toJSON(cs, ['m1'], { now: 'x', interests: { depts: new Set(['MA']), pinned: new Set(['p1']) } });
     const back = TT.coursesFromJSON(doc);
-    eq(back.interests, { depts: ['MA'], pinned: ['p1'] }, '관심 학과·추가 과목 왕복');
-    eq(TT.coursesFromJSON('{"courses":[],"interests":{"pinned":["nope"]}}').interests, { depts: [], pinned: [] }, '없는 id는 버림');
+    eq(back.interests, { depts: ['MA'], pinned: ['p1'], levels: [] }, '관심 학과·추가 과목 왕복');
+    eq(TT.coursesFromJSON('{"courses":[],"interests":{"pinned":["nope"]}}').interests, { depts: [], pinned: [], levels: [] }, '없는 id는 버림');
     ok(!/interests/.test(TT.toJSON(cs, [], { now: 'x', interests: { depts: [], pinned: [] } })), '비어 있으면 쓰지 않음');
+  });
+  t('시간표 칸 읽기 (GIST 표기)', function () {
+    const P = TT.parseScheduleText;
+    eq(P('화 14:30~16:00\n목 14:30~16:00').slots, [S(2, '14:30', '16:00'), S(4, '14:30', '16:00')], '줄바꿈');
+    eq(P('화/목 10:30~12:00').slots, [S(2, '10:30', '12:00'), S(4, '10:30', '12:00')], '요일 묶음');
+    eq(P('월수 9:00-10:30').slots, [S(1, '09:00', '10:30'), S(3, '09:00', '10:30')], '붙여 쓴 요일');
+    eq(P('Mon 9:00~10:30, Wed 9:00~10:30').slots.map(function (x) { return x.day; }), [1, 3], '영문 요일');
+    eq(P('월요일 13:00~14:30').slots, [S(1, '13:00', '14:30')], '요일 글자');
+    eq(P('수요일/금요일 09:00~10:30').slots.map(function (x) { return x.day; }), [3, 5], '요일 글자 묶음');
+    eq(P('금 10:00~12:00 월 09:00~10:30').slots.length, 2, '공백으로 이어 쓴 여러 시간');
+    eq(P('월 09:00~10:30\n월 09:00~10:30').slots.length, 1, '같은 시간 중복 제거');
+    ok(P('All 00:00~00:00').tba && !P('All 00:00~00:00').slots.length, 'All 00:00~00:00은 시간 미정');
+    ok(P('').tba && P('미정').tba, '빈 칸·미정');
+    const bad = P('화 14:30~16:00(격주)'); ok(bad.errors.length === 1 && /격주/.test(bad.errors[0]), '읽을 수 없는 표기는 오류: ' + bad.errors);
+    ok(P('월 16:00~15:00').errors.length === 1, '끝이 시작보다 이르면 오류');
+  });
+  t('ZEUS 개설강좌 형식 CSV', function () {
+    const csv = [
+      '2026학년도 2학기 개설강좌정보,,,,,,,,,,,,',
+      'NO,개설부서,교과목-분반,교과목명,이수구분,교과연구,과정구분,강/실/학,시간표,강의실,"수강\n정원",강의언어,담당교수',
+      '1,기초교육학부,GS0101-01,축구,필수,교과,학사,2/0/0,화 19:00~21:00,,9,한국어,서문학[61594]',
+      '2,기초교육학부,GS1603-03,영어 Ⅰ: 발표와 토론,필수,교과,학사,3/0/2,"화 14:30~16:00\n목 14:30~16:00","지스트대학C동(101)\n지스트대학C동(101)",20,English,엘리스 리[61457]',
+      '3,AI학과,AI2000-01,자료구조와 알고리즘,선택,교과,학사,3/2/4,"월 14:30~16:00\n수 14:30~16:00\n금 10:00~12:00",,50,한국어,"수만 판데[63982]\n김교수[1]"',
+      '4,AI학과,AI5001-01,인공지능 콜로퀴움,필수,교과,석사,1/0/0,All 00:00~00:00,,0,English,',
+      '5,화학과,CH2103-01,유기화학Ⅰ,필수,교과,학사,3/0/3,화 10:30~12:00(격주),,50,English,정원진[1]'
+    ].join('\r\n');
+    const r = TT.coursesFromCSV(csv);
+    eq(r.courses.map(function (c) { return c.id; }), ['GS0101-01', 'GS1603-03', 'AI2000-01', 'AI5001-01'], '제목 줄을 건너뛰고 분반별로 읽음');
+    const a = r.courses[0]; eq([a.code, a.section, a.name, a.dept, a.kind, a.level, a.credits, a.professor], ['GS0101', '01', '축구', '기초교육학부', '필수', '학사', 0, '서문학']);
+    eq(a.slots, [S(2, '19:00', '21:00')]);
+    const b = r.courses[1]; eq(b.credits, 2, '강/실/학의 마지막 숫자'); eq(b.slots.length, 2); eq(b.room, '지스트대학C동(101)', '같은 강의실 한 번만');
+    eq(r.courses[2].professor, '수만 판데, 김교수', '교번 제거·여러 명'); eq(r.courses[2].slots.length, 3);
+    eq(r.courses[3].slots, [], 'All 00:00~00:00 → 시간 미정'); eq(r.courses[3].level, '석사');
+    eq(r.errors.length, 1); eq(r.errors[0].line, 13, '오류 행 번호(따옴표 속 줄바꿈도 줄로 센다)'); ok(/유기화학/.test(r.errors[0].message), r.errors[0].message);
+  });
+  t('Gijol 정리본 JSON 변환', function () {
+    const doc = { version: '1.0', source: 'registration-system', count: 3, items: [
+      { no: 1, department: 'AI학과', course_code: 'AI6404', section: '01', title: '신경정보학', category: '선택', subcategory: null, research_area: '교과', program: '석사', hours: { lecture_hours: 3, lab_hours: 0, credits: 3 },
+        meetings: [{ day: 'TUE', start: '10:30', end: '12:00', room: '다산빌딩(301)' }, { day: 'THU', start: '10:30', end: '12:00', room: '다산빌딩(301)' }], capacity: 0, instructors: [{ name: '이보름', staff_id: '60931' }] },
+      { no: 2, department: '도전탐색과정', course_code: 'GS1001', section: '02', title: '미적분학과 응용', category: '필수', program: '학사', hours: { credits: 3 }, meetings: [], instructors: [] },
+      { no: 3, department: '도전탐색과정', course_code: 'GS1001', section: '02', title: '중복', category: '필수', program: '학사', hours: { credits: 3 }, meetings: [], instructors: [] }
+    ] };
+    ok(TT.isGijolDoc(doc) && !TT.isGijolDoc({ courses: [] }), '형식 감지');
+    const r = TT.coursesFromGijol(doc);
+    eq(r.courses.length, 2); eq(r.warnings.length, 1, '중복 분반 경고');
+    const c = r.courses[0];
+    eq([c.id, c.code, c.section, c.name, c.dept, c.kind, c.level, c.credits, c.professor, c.room], ['AI6404-01', 'AI6404', '01', '신경정보학', 'AI학과', '선택', '석사', 3, '이보름', '다산빌딩(301)']);
+    eq(c.slots, [S(2, '10:30', '12:00'), S(4, '10:30', '12:00')], '영문 요일 변환');
+    const imp = TT.importAny(JSON.stringify(doc)); eq(imp.format, 'gijol'); eq(imp.courses.length, 2);
+    eq(TT.importAny('{"courses":[]}').format, 'json', '일반 JSON은 그대로');
+  });
+  t('과정(학사/대학원) 필터', function () {
+    const cs = [C('u1', 'A', '01', [], { code: 'EC2001', level: '학사' }), C('g1', 'B', '01', [], { code: 'EC5001', level: '석사' }),
+      C('g2', 'C', '01', [], { code: 'EC7001', level: '박사' }), C('n1', 'D', '01', [], { code: 'EC3001' })];
+    eq(TT.levelSummary(cs), [{ level: '학사', count: 1 }, { level: '석사', count: 1 }, { level: '박사', count: 1 }]);
+    eq(Array.from(TT.visibleIds(cs, { depts: new Set(['EC']) })).length, 4, '과정 필터 없음');
+    eq(Array.from(TT.visibleIds(cs, { depts: new Set(['EC']), levels: new Set(['학사']) })), ['u1', 'n1'], '학사만 (과정 정보 없는 과목은 유지)');
+    eq(Array.from(TT.visibleIds(cs, { depts: new Set(['EC']), levels: new Set(['학사']), selected: new Set(['g2']) })), ['u1', 'g2', 'n1'], '선택한 과목은 항상');
+    const back = TT.coursesFromJSON(TT.toJSON(cs, [], { now: 'x', interests: { depts: ['EC'], pinned: [], levels: new Set(['학사']) } }));
+    eq(back.interests.levels, ['학사'], '과정 필터 저장'); eq(back.courses[0].level, '학사');
+    eq(TT.coursesFromCSV(TT.toCSV(cs)).courses.map(function (c) { return c.level; }), ['학사', '석사', '박사', null], 'CSV 왕복');
   });
   const fixture = function () {
     // A-B, B-C, C-D (경로), E 고립
@@ -1253,6 +1456,11 @@ TT.runSelfTests = function () {
     f2.pin('c-s02', 200, 200); f2.pin('c-s03', 300, 300); f2.unpinAll(); ok(f2.nodes.every(function (nd) { return nd.fx === null && nd.fy === null; }), '전체 고정 해제');
     const f3 = new TT.Force({ seed: 1 }); f3.setGraph(cs.slice(0, 3), []); const p = f3.byId.get('c-s01').x; f3.setGraph(cs, g.edges); eq(f3.byId.get('c-s01').x, p, '기존 위치 유지');
     const f4 = new TT.Force(); f4.setGraph([], []); f4.reheat(1); f4.step(); ok(!f4.running, '빈 그래프');
+    const big = []; for (let i = 0; i < 160; i++) big.push(C('b' + i, 'B' + (i % 40), String(1 + Math.floor(i / 40)).padStart(2, '0'), [S(1 + (i % 5), ['09:00', '10:30', '13:00', '14:30'][i % 4], ['10:30', '12:00', '14:30', '16:00'][i % 4])]));
+    const bg = TT.buildGraph(big), f5 = new TT.Force({ seed: 5 }); f5.setGraph(big, bg.edges); f5.reheat(1); let k = 0; while (f5.running && k < 3000) { f5.step(); k++; }
+    ok(f5.R < 22 && f5.R >= 11, '노드가 많으면 반지름 축소 (' + f5.R.toFixed(1) + ')');
+    const b5 = f5.bounds(); const onEdge = f5.nodes.filter(function (nd) { return nd.x <= b5.x0 + 0.5 || nd.x >= b5.x1 - 0.5 || nd.y <= b5.y0 + 0.5 || nd.y >= b5.y1 - 0.5; }).length;
+    ok(onEdge < big.length * 0.15, '가장자리에 몰린 노드가 적음 (' + onEdge + '/' + big.length + ')');
   });
   return results;
 };
@@ -1332,7 +1540,7 @@ function toast(msg, opts = {}) {
   if (det) det.addEventListener('toggle', () => { clearTimeout(timer); if (!det.open) timer = setTimeout(close, 6000); });
   return node;
 }
-const snapshot = () => ({ courses: store.courses.slice(), selected: Array.from(store.selected), interests: { depts: Array.from(store.view.depts), pinned: Array.from(store.view.pinned) } });
+const snapshot = () => ({ courses: store.courses.slice(), selected: Array.from(store.selected), interests: { depts: Array.from(store.view.depts), pinned: Array.from(store.view.pinned), levels: Array.from(store.view.levels) } });
 const undoAction = prev => prev.courses.length ? { label: '되돌리기', onClick: () => { store.setCourses(prev.courses, prev.selected, prev.interests); toast('이전 상태로 되돌렸습니다'); } } : null;
 const tooltip = {
   el: $('#tooltip'),
@@ -1363,14 +1571,15 @@ function courseTooltip(id) {
 // ---------- Store ----------
 const store = {
   courses: [], selected: new Set(), hoverId: null, colors: new Map(), graph: TT.buildGraph([]), state: null, listeners: [],
-  byId: new Map(), view: { depts: new Set(), pinned: new Set() }, visible: new Set(),
+  byId: new Map(), view: { depts: new Set(), pinned: new Set(), levels: new Set() }, visible: new Set(),
   subscribe(fn) { this.listeners.push(fn); },
   emit(type) { this.listeners.forEach(fn => fn(type)); },
   recompute(opts) {
     this.byId = new Map(this.courses.map(c => [c.id, c]));
     const present = new Set(this.courses.map(TT.deptOf).filter(Boolean));
-    this.view = { depts: new Set([...this.view.depts].filter(d => present.has(d))), pinned: new Set([...this.view.pinned].filter(id => this.byId.has(id))) };
-    this.visible = TT.visibleIds(this.courses, { depts: this.view.depts, pinned: this.view.pinned, selected: this.selected });
+    const presentLevels = new Set(this.courses.map(c => c.level).filter(Boolean));
+    this.view = { depts: new Set([...this.view.depts].filter(d => present.has(d))), pinned: new Set([...this.view.pinned].filter(id => this.byId.has(id))), levels: new Set([...this.view.levels].filter(l => presentLevels.has(l))) };
+    this.visible = TT.visibleIds(this.courses, { depts: this.view.depts, pinned: this.view.pinned, levels: this.view.levels, selected: this.selected });
     const vis = this.courses.filter(c => this.visible.has(c.id));
     this.graph = TT.buildGraph(vis);
     this.colors = TT.assignColors(vis.map(c => c.name), this.colors);
@@ -1382,7 +1591,7 @@ const store = {
   },
   setCourses(list, selectedIds, interests) {
     this.courses = list.slice(); this.selected = new Set(selectedIds || []); this.hoverId = null;
-    this.view = { depts: new Set(interests && interests.depts || []), pinned: new Set(interests && interests.pinned || []) };
+    this.view = { depts: new Set(interests && interests.depts || []), pinned: new Set(interests && interests.pinned || []), levels: new Set(interests && interests.levels || []) };
     const dropped = this.recompute(); this.emit('reset'); this.persist(); return dropped;
   },
   addCourse(c) { this.courses.push(c); this.view.pinned.add(c.id); this.recompute(); this.emit('data'); this.persist(); },
@@ -1394,6 +1603,7 @@ const store = {
   deleteCourse(id) { this.courses = this.courses.filter(c => c.id !== id); this.recompute(); this.emit('data'); this.persist(); },
   toggleDept(d) { const s = new Set(this.view.depts); if (s.has(d)) s.delete(d); else s.add(d); this.view.depts = s; this.recompute(); this.emit('data'); this.persist(); },
   clearDepts() { this.view.depts = new Set(); this.recompute(); this.emit('data'); this.persist(); },
+  toggleLevel(l) { const s = new Set(this.view.levels); if (s.has(l)) s.delete(l); else s.add(l); this.view.levels = s; this.recompute(); this.emit('data'); this.persist(); },
   togglePin(id) { const s = new Set(this.view.pinned); if (s.has(id)) s.delete(id); else s.add(id); this.view.pinned = s; this.recompute(); this.emit('data'); this.persist(); },
   toggleSelect(id) {
     const r = TT.toggleSelect(this.graph, this.selected, id);
@@ -1410,14 +1620,14 @@ const store = {
       const s = localStorage.getItem(STORAGE_KEY); if (!s) return false;
       const r = TT.coursesFromJSON(s); if (!r.courses.length && r.errors.length) return false;
       this.courses = r.courses; this.selected = new Set(r.selected);
-      this.view = { depts: new Set(r.interests.depts), pinned: new Set(r.interests.pinned) };
+      this.view = { depts: new Set(r.interests.depts), pinned: new Set(r.interests.pinned), levels: new Set(r.interests.levels) };
       this.recompute(); return true;
     } catch (e) { return false; }
   },
   getState() {
     const blocked = {}; this.state.blocked.forEach((v, k) => { blocked[k] = v.slice(); });
     return { courses: JSON.parse(JSON.stringify(this.courses)), selected: Array.from(this.selected), blocked, hoverId: this.hoverId,
-      visible: Array.from(this.visible), view: { depts: Array.from(this.view.depts), pinned: Array.from(this.view.pinned) },
+      visible: Array.from(this.visible), view: { depts: Array.from(this.view.depts), pinned: Array.from(this.view.pinned), levels: Array.from(this.view.levels) },
       edges: this.graph.edges.map(e => ({ a: e.a, b: e.b, section: e.section, overlaps: e.overlaps.length })) };
   }
 };
@@ -1516,6 +1726,9 @@ const graphView = {
     this.emptyMsg.toggleAttribute('hidden', g.nodes.length > 0); // SVG 요소에는 .hidden 속성이 없다
     this.emptyMsg.textContent = store.courses.length ? '왼쪽에서 관심 학과를 고르거나 과목을 검색해 추가하세요' : '과목을 추가하거나 샘플을 불러오세요';
     this.sim.setGraph(g.nodes, g.edges);
+    const R = this.sim.R, dense = g.nodes.length > 60;
+    this.svg.classList.toggle('dense', dense);
+    this.nodeEls.forEach(el => { el.querySelector('circle').setAttribute('r', R.toFixed(1)); el.querySelector('.name').setAttribute('y', (R + 15).toFixed(1)); });
     this.updateStates(); this.updateHover();
     this.sim.reheat(1); this.render(); this.startLoop();
   },
@@ -1641,7 +1854,7 @@ const listView = {
 
 // ---------- 관심 학과 / 전체 과목 검색 ----------
 const interestView = {
-  box: $('#interest'), row: $('#dept-row'), chips: $('#dept-chips'), clear: $('#btn-clear-depts'), input: $('#course-search'), results: $('#search-results'),
+  box: $('#interest'), row: $('#dept-row'), chips: $('#dept-chips'), levels: $('#level-chips'), clear: $('#btn-clear-depts'), input: $('#course-search'), results: $('#search-results'),
   init() {
     store.subscribe(type => { if (type !== 'hover') this.render(); });
     this.input.addEventListener('input', () => this.renderResults());
@@ -1657,6 +1870,12 @@ const interestView = {
     this.row.hidden = this.chips.hidden = summary.length === 0;
     this.chips.replaceChildren(...summary.map(({ dept, count }) => h('button', { class: 'chip', type: 'button', 'data-dept': dept, 'aria-pressed': String(store.view.depts.has(dept)), onclick: () => store.toggleDept(dept) }, TT.deptLabel(dept), h('span', { class: 'cnt' }, count))));
     if (focusDept != null) { const b = [...this.chips.children].find(x => x.dataset.dept === focusDept); if (b) b.focus(); }
+    const levels = TT.levelSummary(store.courses);
+    const focusLevel = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.level : null;
+    this.levels.hidden = levels.length < 2;
+    this.levels.replaceChildren(...(levels.length < 2 ? [] : [h('span', { class: 'note', style: 'align-self:center' }, '과정')].concat(levels.map(({ level, count }) =>
+      h('button', { class: 'chip', type: 'button', 'data-level': level, 'aria-pressed': String(store.view.levels.has(level)), title: '관심 학과 과목 중 이 과정만 보기 (여러 개 선택 가능, 아무것도 안 고르면 전부)', onclick: () => store.toggleLevel(level) }, level, h('span', { class: 'cnt' }, count))))));
+    if (focusLevel) { const b = this.levels.querySelector(`[data-level="${CSS.escape(focusLevel)}"]`); if (b) b.focus(); }
     this.clear.hidden = store.view.depts.size === 0;
     this.renderResults();
   },
@@ -1669,7 +1888,7 @@ const interestView = {
       const pinned = store.view.pinned.has(c.id), sel = store.selected.has(c.id), vis = store.visible.has(c.id);
       const clash = !sel && store.conflictsWithSelection(c).length > 0;
       const [tag, cls] = pinned ? ['✓ 추가됨', 'on'] : sel ? ['선택됨', 'on'] : vis ? ['표시 중', ''] : ['＋ 추가', 'add'];
-      const info = [TT.deptLabel(TT.deptOf(c) || ''), c.professor, c.slots.length ? c.slots.map(TT.slotText).join(', ') : '시간 미정'].filter(Boolean).join(' · ');
+      const info = [TT.deptLabel(TT.deptOf(c) || ''), c.level, c.professor, c.slots.length ? c.slots.map(TT.slotText).join(', ') : '시간 미정'].filter(Boolean).join(' · ');
       const btn = h('button', { class: 'res', type: 'button', 'data-id': c.id, 'aria-pressed': String(pinned), title: pinned ? '그래프에서 빼기' : '그래프에 추가' },
         h('span', null,
           h('span', { class: 'r1' }, c.code ? h('span', { class: 'code' }, c.code) : null, c.name, ' ', c.section),
@@ -1758,17 +1977,72 @@ function importText(text, opts = {}) {
   }
   const prev = snapshot();
   store.setCourses(res.courses, res.selected, res.interests);
-  let msg = `${res.courses.length}개 과목 불러옴 (${res.format.toUpperCase()})`;
+  let msg = `${res.courses.length}개 과목 불러옴 (${opts.formatLabel || res.format.toUpperCase()})`;
   if (res.errors.length) msg += `, ${res.errors.length}${unit} 무시됨`;
   if (res.selected.length) msg += `, ${res.selected.length}개 선택 복원`;
   toast(msg, { details, action: undoAction(prev) });
   return res;
 }
+// 엑셀(.xls/.xlsx)은 필요할 때만 SheetJS를 불러와 CSV로 바꾼 뒤 같은 경로로 읽는다
+const SHEETJS_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+let sheetjsPromise = null;
+function loadSheetJS() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!sheetjsPromise) sheetjsPromise = new Promise((resolve, reject) => {
+    const sc = document.createElement('script'); sc.src = SHEETJS_URL; sc.async = true;
+    const timer = setTimeout(() => reject(new Error('시간 초과')), 20000);
+    sc.onload = () => { clearTimeout(timer); window.XLSX ? resolve(window.XLSX) : reject(new Error('라이브러리를 찾을 수 없음')); };
+    sc.onerror = () => { clearTimeout(timer); reject(new Error('내려받기 실패')); };
+    document.head.append(sc);
+  }).catch(e => { sheetjsPromise = null; throw e; });
+  return sheetjsPromise;
+}
+const isExcel = file => /\.(xlsx?|xlsm)$/i.test(file.name || '') || /spreadsheet|ms-excel/.test(file.type || '');
+async function excelToCSV(file) {
+  let XLSX;
+  try { XLSX = await loadSheetJS(); }
+  catch (e) { throw new Error(`엑셀을 읽는 라이브러리를 불러오지 못했습니다(${e.message}). 인터넷 연결을 확인하거나, 엑셀에서 「CSV UTF-8」로 저장해 불러오세요`); }
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
+  // 과목이 가장 많이 읽히는 시트를 고른다
+  let best = null;
+  wb.SheetNames.forEach(name => {
+    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name], { blankrows: false, rawNumbers: false });
+    const n = TT.coursesFromCSV(csv).courses.length;
+    if (!best || n > best.n) best = { csv, n, name };
+  });
+  return best ? best.csv : '';
+}
 async function handleFiles(files) {
   const file = files && files[0]; if (!file) return;
-  try { importText(await readFileText(file)); }
+  try { importText(isExcel(file) ? await excelToCSV(file) : await readFileText(file), { formatLabel: isExcel(file) ? '엑셀' : null }); }
   catch (e) { toast('파일을 읽지 못했습니다: ' + e.message, { type: 'error' }); }
 }
+
+// GIST 개설강좌: Gijol(MIT)이 공개한 정리본을 학기별로 받아온다
+const gijolURL = term => { const m = /^(\d{4})-([12])$/.exec(term); return m ? `https://raw.githubusercontent.com/Gijol/gijol-v2/dev/DB/timetable/registration-system/${m[1]}_0${m[2]}_course_info.normalized.json` : null; };
+const gistView = {
+  dialog: $('#gist-dialog'), form: $('#gist-form'), errors: $('#gist-errors'), btn: $('#btn-gist-load'),
+  init() {
+    $('#btn-gist').addEventListener('click', () => { this.errors.replaceChildren(); this.dialog.showModal(); this.form.term.focus(); });
+    $('#btn-gist-cancel').addEventListener('click', () => this.dialog.close());
+    this.form.addEventListener('submit', e => { e.preventDefault(); this.load(); });
+  },
+  async load() {
+    const term = TT.nfc(this.form.term.value), url = gijolURL(term);
+    if (!url) { this.errors.replaceChildren(h('li', null, '학기는 2026-2 처럼 「연도-1」 또는 「연도-2」로 적어 주세요')); return; }
+    this.btn.disabled = true; this.btn.textContent = '받는 중…';
+    try {
+      const res = await fetch(url, { cache: 'no-cache' });
+      if (res.status === 404) throw new Error(`${term} 학기 데이터가 아직 없습니다`);
+      if (!res.ok) throw new Error(`서버 응답 ${res.status}`);
+      const text = await res.text();
+      this.dialog.close();
+      importText(text, { formatLabel: `GIST ${term} · Gijol` });
+    } catch (e) {
+      this.errors.replaceChildren(h('li', null, '불러오지 못했습니다: ' + (e.message || e) + '. 인터넷 연결을 확인하거나, 공식 엑셀 파일을 「파일 불러오기」로 여세요.'));
+    } finally { this.btn.disabled = false; this.btn.textContent = '불러오기'; }
+  }
+};
 function exportJSON() {
   const blob = new Blob([TT.toJSON(store.courses, store.selected)], { type: 'application/json' });
   const a = h('a', { href: URL.createObjectURL(blob), download: `timetable-${ymd()}.json` });
@@ -1789,7 +2063,7 @@ function initImportExport() {
 }
 
 // ---------- 초기화 ----------
-graphView.init(); gridView.init(); listView.init(); interestView.init(); formView.init(); initImportExport();
+graphView.init(); gridView.init(); listView.init(); interestView.init(); formView.init(); gistView.init(); initImportExport();
 $('#btn-add').addEventListener('click', () => formView.open(null));
 $('#btn-clear-sel').addEventListener('click', () => store.clearSelection());
 $('#btn-sample').addEventListener('click', () => {
@@ -1804,7 +2078,7 @@ $('#btn-theme').addEventListener('click', () => {
 document.addEventListener('keydown', e => { if (e.key === 'Escape') tooltip.hide(); });
 if (!store.load()) store.setCourses(TT.sampleCourses(), [], null); else store.emit('reset');
 
-window.app = { store, graphView, gridView, listView, interestView, formView, sim: graphView.sim, importText, readFileText, exportJSON, toast };
+window.app = { store, graphView, gridView, listView, interestView, formView, gistView, excelToCSV, loadSheetJS, sim: graphView.sim, importText, readFileText, exportJSON, toast };
 })();
 </script>
 </body>
