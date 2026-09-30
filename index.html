@@ -187,6 +187,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @keyframes shake { 0%,100%{transform:translate(0,0)} 25%{transform:translate(-4px,0)} 75%{transform:translate(4px,0)} }
 .node.shake > g { animation: shake .3s; }
 #graph .empty-msg { fill: var(--muted); font-size: 15px; text-anchor: middle; }
+#graph.panning { cursor: grabbing; }
+.box-bg { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+.box-title { font-size: 15px; font-weight: 700; fill: var(--text); }
+.box-count { font-size: 12px; fill: var(--muted); font-weight: 400; }
+.col-bg { fill: var(--panel-2); opacity: .5; }
+.col-bg.alt { opacity: .95; }
+.col-title { font-size: 11px; fill: var(--muted); text-anchor: middle; font-weight: 600; }
+.band-line { stroke: var(--line); stroke-dasharray: 3 3; }
+.band-title { font-size: 9.5px; fill: var(--muted); }
+.edge.cross { opacity: .12; }
+.edge.far { opacity: .22; }
+.edge.cross.hi, .edge.far.hi { opacity: 1; }
+.graph-tools { position: absolute; right: 10px; top: 10px; display: flex; gap: 6px; z-index: 2; }
+.graph-tools .btn { background: var(--panel); box-shadow: var(--shadow); }
 /* 노드가 많을 때: 분반 숫자를 작게, 과목명은 마우스를 올린 과목·이웃·선택한 과목만 */
 #graph.dense .node .sec { font-size: 9px; }
 #graph.dense .node circle { stroke-width: 2.2; }
@@ -344,9 +358,15 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
   </aside>
 
   <section class="pane" id="graph-pane">
-    <div class="pane-head">충돌 그래프 <span class="hint">클릭: 선택/해제 · 드래그: 이동 · 마우스 올리기: 이유 보기</span></div>
+    <div class="pane-head">충돌 그래프 <span class="hint" id="graph-hint">클릭: 선택/해제 · 드래그: 이동 · 마우스 올리기: 이유 보기</span></div>
     <div id="graph-wrap">
+      <div class="graph-tools" id="graph-tools" hidden>
+        <button class="btn small" type="button" id="btn-zoom-in" aria-label="확대">＋</button>
+        <button class="btn small" type="button" id="btn-zoom-out" aria-label="축소">－</button>
+        <button class="btn small" type="button" id="btn-fit">전체 보기</button>
+      </div>
       <svg id="graph" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet" role="img" aria-label="수업 충돌 그래프">
+        <g id="g-boxes"></g>
         <g id="g-edges"></g>
         <g id="g-edge-hits"></g>
         <g id="g-nodes"></g>
@@ -974,6 +994,116 @@ TT.searchCourses = function (courses, query, limit) {
   return hits.slice(0, limit || 50).map(function (h) { return h.c; });
 };
 
+// ---------- 학과 상자 / 번호대 칸 배치 ----------
+// 도전탐색과정(GS) 백의 자리 = 분야 (2026-2 개설강좌 이름으로 확인), 천의 자리 = 난이도, 0천번대 = 예체능
+TT.GS_FIELDS = { '0': '수학', '1': '물리', '2': '화학', '3': '생명', '4': '컴퓨터·공학', '5': '글쓰기·예술', '6': '영어', '9': '탐색·한국어' };
+TT.codeParts = function (c) {
+  const m = /^([A-Z]+)(\d)(\d)(\d\d)/.exec(TT.normalizeCode(c.code) || '');
+  return m ? { prefix: m[1], th: m[2], hu: m[3] } : null;
+};
+TT.isResearch = function (c) { return c.kind === '연구' || /논문연구|개별연구/.test(c.name || ''); };
+// 학과 상자 안에서 과목이 들어갈 칸(col)과, 도전탐색과정이면 난이도 띠(band)
+TT.subgroupOf = function (c) {
+  const p = TT.codeParts(c);
+  if (TT.isResearch(c)) return { col: 'research', colLabel: '연구', colOrder: 90, band: null };
+  if (!p) return { col: 'etc', colLabel: '기타', colOrder: 95, band: null };
+  if (p.prefix === 'GS') {
+    if (p.th === '0') return { col: 'gs-arts', colLabel: '예체능', colOrder: -1, band: null };
+    return { col: 'gs-f' + p.hu, colLabel: TT.GS_FIELDS[p.hu] || ('x' + p.hu + 'xx'), colOrder: +p.hu, band: 'L' + p.th, bandLabel: p.th + '000번대', bandOrder: +p.th };
+  }
+  return { col: 'th' + p.th, colLabel: p.th + '000번대', colOrder: +p.th, band: null };
+};
+TT.hasGroupInfo = function (courses) { return courses.some(function (c) { return !!TT.deptOf(c); }); };
+TT.groupLayout = function (courses, opts) {
+  opts = Object.assign({ cellW: 80, cellH: 62, pad: 12, head: 30, colHead: 22, colGap: 6, bandGap: 6, boxGap: 90, minColW: 92, aspect: 1.45 }, opts || {});
+  const O = opts;
+  const byDept = new Map();
+  courses.forEach(function (c) { const d = TT.deptOf(c) || '기타'; if (!byDept.has(d)) byDept.set(d, []); byDept.get(d).push(c); });
+  const sortCode = function (a, b) { return (a.code || a.name).localeCompare(b.code || b.name, 'ko') || a.section.localeCompare(b.section, 'ko', { numeric: true }); };
+  // 한 줄(행 묶음)에 들어갈 행 수: 과목 수에 맞춰 상자가 너무 길거나 넓지 않게
+  const rowsFor = function (n) { return Math.max(1, Math.ceil(Math.sqrt(n / 2.2))); };
+  const regions = new Map(), seeds = new Map();
+  const boxes = Array.from(byDept, function (e) { return { dept: e[0], list: e[1].slice().sort(sortCode) }; })
+    .sort(function (a, b) { return b.list.length - a.list.length || a.dept.localeCompare(b.dept, 'ko'); })
+    .map(function (bx) {
+      const cols = new Map();
+      bx.list.forEach(function (c) {
+        const g = TT.subgroupOf(c);
+        if (!cols.has(g.col)) cols.set(g.col, { key: g.col, label: g.colLabel, order: g.colOrder, bands: new Map(), span: [] });
+        const col = cols.get(g.col);
+        if (g.band) { if (!col.bands.has(g.band)) col.bands.set(g.band, { key: g.band, label: g.bandLabel, order: g.bandOrder, ids: [] }); col.bands.get(g.band).ids.push(c.id); }
+        else col.span.push(c.id);
+      });
+      const colList = Array.from(cols.values()).sort(function (a, b) { return a.order - b.order; });
+      // 난이도 띠: 상자 안 모든 분야 칸이 같은 행 수를 공유한다
+      const bandMap = new Map();
+      colList.forEach(function (col) { col.bands.forEach(function (b) { if (!bandMap.has(b.key)) bandMap.set(b.key, { key: b.key, label: b.label, order: b.order, n: 0 }); bandMap.get(b.key).n += b.ids.length; }); });
+      const bands = Array.from(bandMap.values()).sort(function (a, b) { return a.order - b.order; });
+      bands.forEach(function (b) { b.rows = rowsFor(b.n); b.h = b.rows * O.cellH; });
+      const spanN = colList.reduce(function (s, col) { return s + col.span.length; }, 0);
+      const bandRows = bands.reduce(function (s, b) { return s + b.rows; }, 0);
+      // 띠가 없는 상자(전공)는 모든 칸이 같은 행 수, 띠가 있으면 띠 없는 칸은 띠 전체 높이를 쓴다
+      const spanRows = bands.length ? Math.max(bandRows, 1) : rowsFor(spanN);
+      const bandsH = bands.reduce(function (s, b) { return s + b.h; }, 0) + Math.max(0, bands.length - 1) * O.bandGap;
+      const innerH = Math.max(bands.length ? bandsH : spanRows * O.cellH, O.cellH);
+      colList.forEach(function (col) {
+        col.w = O.minColW;
+        col.bands.forEach(function (b) { const band = bandMap.get(b.key); b.k = Math.ceil(b.ids.length / band.rows); b.rows = band.rows; col.w = Math.max(col.w, b.k * O.cellW); });
+        if (col.span.length) {
+          const rows = Math.max(1, Math.floor(innerH / O.cellH));
+          col.k = Math.ceil(col.span.length / rows); col.rows = Math.ceil(col.span.length / col.k); col.w = Math.max(col.w, col.k * O.cellW);
+        }
+      });
+      const w = O.pad * 2 + colList.reduce(function (s, col) { return s + col.w; }, 0) + Math.max(0, colList.length - 1) * O.colGap;
+      const h = O.head + O.colHead + innerH + O.pad;
+      return { dept: bx.dept, count: bx.list.length, cols: colList, bands: bands, w: w, h: h, innerH: innerH };
+    });
+  // 상자 배치: 가로로 흘려 놓고 목표 폭을 넘으면 다음 줄
+  const area = boxes.reduce(function (s, b) { return s + (b.w + O.boxGap) * (b.h + O.boxGap); }, 0);
+  const maxW = boxes.reduce(function (m, b) { return Math.max(m, b.w); }, 0);
+  const targetW = Math.max(maxW, Math.sqrt(area * O.aspect));
+  let x = O.boxGap / 2, y = O.boxGap / 2, rowH = 0, width = 0;
+  boxes.forEach(function (b) {
+    if (x > O.boxGap / 2 && x + b.w > targetW + O.boxGap / 2) { x = O.boxGap / 2; y += rowH + O.boxGap; rowH = 0; }
+    b.x = x; b.y = y; x += b.w + O.boxGap; rowH = Math.max(rowH, b.h); width = Math.max(width, b.x + b.w);
+  });
+  const height = y + rowH + O.boxGap / 2;
+  width += O.boxGap / 2;
+  // 칸·띠 좌표와 노드 영역, 처음 놓을 자리(칸 안 격자, 번호순)
+  boxes.forEach(function (b) {
+    const top = b.y + O.head + O.colHead;
+    let cx = b.x + O.pad;
+    b.cols.forEach(function (col) {
+      col.x = cx; col.y = top; col.h = b.innerH;
+      const place = function (ids, x0, y0, w, h, k, rows, cell) {
+        const reg = { x0: x0, y0: y0, x1: x0 + w, y1: y0 + h, box: b.dept, cell: b.dept + '|' + cell };
+        const ox = x0 + (w - k * O.cellW) / 2, oy = y0 + (h - rows * O.cellH) / 2;
+        ids.forEach(function (id, i) {
+          regions.set(id, reg);
+          const r = Math.floor(i / k), q = i % k;
+          seeds.set(id, { x: ox + (q + 0.5 + (r % 2 ? 0.18 : -0.18)) * O.cellW, y: oy + (r + 0.5) * O.cellH - 6 });
+        });
+      };
+      if (col.span.length) place(col.span, cx, top, col.w, b.innerH, col.k, col.rows, col.key);
+      let by = top;
+      col.bandBoxes = [];
+      b.bands.forEach(function (band) {
+        const cb = col.bands.get(band.key);
+        if (cb) place(cb.ids, cx, by, col.w, band.h, cb.k, cb.rows, col.key + '|' + band.key);
+        col.bandBoxes.push({ label: band.label, y: by, h: band.h, used: !!cb });
+        by += band.h + O.bandGap;
+      });
+      cx += col.w + O.colGap;
+    });
+  });
+  return {
+    width: width, height: height, regions: regions, seeds: seeds,
+    boxes: boxes.map(function (b) { return { dept: b.dept, count: b.count, x: b.x, y: b.y, w: b.w, h: b.h, head: O.head, colHead: O.colHead,
+      bands: b.bands.map(function (x) { return x.label; }),
+      cols: b.cols.map(function (col) { return { key: col.key, label: col.label, x: col.x, y: col.y, w: col.w, h: col.h, count: col.span.length + Array.from(col.bands.values()).reduce(function (s, x) { return s + x.ids.length; }, 0), bands: col.span.length ? [] : col.bandBoxes }; }) }; })
+  };
+};
+
 // ---------- 시드 난수 / 힘 기반 배치 ----------
 TT.mulberry32 = function (seed) {
   let a = seed >>> 0;
@@ -988,7 +1118,7 @@ TT.mulberry32 = function (seed) {
 
 TT.Force = function (opts) {
   opts = opts || {};
-  this.W = opts.W || 800; this.H = opts.H || 600; this.R0 = this.R = opts.R || 22;
+  this.W0 = this.W = opts.W || 800; this.H0 = this.H = opts.H || 600; this.R0 = this.R = opts.R || 22;
   // 원 아래 과목명 라벨이 잘리지 않도록 좌우·아래 여백을 넉넉히 둔다
   this.PAD_X = opts.PAD_X || 58; this.PAD_T = opts.PAD_T || 30; this.PAD_B = opts.PAD_B || 52;
   this.K_REPEL = 16000; this.L_EDGE = 170; this.K_SPRING = 0.03; this.K_GRAVITY = 0.004; this.K_COLLIDE = 0.5;
@@ -997,30 +1127,60 @@ TT.Force = function (opts) {
   this.nodes = []; this.byId = new Map(); this.edgeRefs = [];
   this.alpha = 0; this.running = false;
 };
-TT.Force.prototype.setGraph = function (courses, edges) {
-  const W = this.W, H = this.H, self = this;
+TT.Force.prototype.setGraph = function (courses, edges, layout) {
+  const self = this;
+  // 학과 상자 배치가 있으면 캔버스 크기와 노드별 영역을 따른다
+  this.layout = layout || null;
+  this.W = layout ? layout.width : this.W0; this.H = layout ? layout.height : this.H0;
+  const W = this.W, H = this.H;
   const prev = this.byId; const fresh = prev.size === 0;
   const byId = new Map(); const nodes = [];
   const ordered = courses.slice().sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : (a.section < b.section ? -1 : 1); });
   const n = ordered.length, r0 = 0.36 * Math.min(W, H);
   ordered.forEach(function (c, i) {
     let nd = prev.get(c.id);
+    const reg = layout ? layout.regions.get(c.id) : null;
+    const inside = function (p) { return reg && p.x >= reg.x0 && p.x <= reg.x1 && p.y >= reg.y0 && p.y <= reg.y1; };
+    if (nd && layout && !(inside(nd) && nd.box === reg.cell)) { const sd = layout.seeds.get(c.id); nd.x = sd.x; nd.y = sd.y; nd.vx = nd.vy = 0; nd.fx = nd.fy = null; }
+    if (nd && !layout && nd.reg) { nd.fx = nd.fy = null; }
     if (!nd) {
       let x, y;
-      if (fresh) { const ang = (2 * Math.PI * i) / Math.max(n, 1) - Math.PI / 2; x = W / 2 + r0 * Math.cos(ang) + (self.rand() - .5) * 20; y = H / 2 + r0 * Math.sin(ang) + (self.rand() - .5) * 20; }
+      if (layout) { const sd = layout.seeds.get(c.id); x = sd.x; y = sd.y; }
+      else if (fresh) { const ang = (2 * Math.PI * i) / Math.max(n, 1) - Math.PI / 2; x = W / 2 + r0 * Math.cos(ang) + (self.rand() - .5) * 20; y = H / 2 + r0 * Math.sin(ang) + (self.rand() - .5) * 20; }
       else { x = W / 2 + (self.rand() - .5) * 80; y = H / 2 + (self.rand() - .5) * 80; }
       nd = { id: c.id, x: x, y: y, vx: 0, vy: 0, fx: null, fy: null };
     }
+    nd.reg = reg; nd.box = reg ? reg.cell : null; // 힘은 같은 칸 안에서만
     byId.set(c.id, nd); nodes.push(nd);
   });
   this.nodes = nodes; this.byId = byId;
-  this.edgeRefs = (edges || []).map(function (e) { return [byId.get(e.a), byId.get(e.b)]; }).filter(function (p) { return p[0] && p[1]; });
-  // 노드가 많으면 고립 노드가 가장자리에 붙지 않도록 중심 인력을 키운다 (실측: 155노드에서 가장자리 22→7개)
-  this.gravity = this.K_GRAVITY * (n > 40 ? 2.5 : Math.min(1.6, Math.sqrt(12 / Math.max(n, 1)) + 0.3));
-  this.repel = this.K_REPEL * Math.min(1, 16 / Math.max(n, 1));
-  // 노드가 많으면 원을 줄이고 간선도 짧게 해서 화면 안에 들어가게 한다
-  this.R = this.R0 * (n > 40 ? Math.max(0.5, Math.sqrt(40 / n)) : 1);
-  this.L = this.L_EDGE * (this.R / this.R0);
+  this.edgeRefs = (edges || []).map(function (e) { return [byId.get(e.a), byId.get(e.b)]; }).filter(function (p) { return p[0] && p[1] && (!layout || p[0].box === p[1].box); });
+  if (layout) {
+    // 칸 크기에 맞춘 고정값 (칸 하나 = 80×62)
+    // 실측(2026-2, 155노드): 인력 0.005·반발 3000에서 칸 안 겹침 0, 예체능 칸 높이의 77%까지 퍼짐
+    this.R = this.R0 * 0.72; this.L = 58; this.repel = 3000; this.gravity = 0.005;
+  } else {
+    // 노드가 많으면 고립 노드가 가장자리에 붙지 않도록 중심 인력을 키운다 (실측: 155노드에서 가장자리 22→7개)
+    this.gravity = this.K_GRAVITY * (n > 40 ? 2.5 : Math.min(1.6, Math.sqrt(12 / Math.max(n, 1)) + 0.3));
+    this.repel = this.K_REPEL * Math.min(1, 16 / Math.max(n, 1));
+    // 노드가 많으면 원을 줄이고 간선도 짧게 해서 화면 안에 들어가게 한다
+    this.R = this.R0 * (n > 40 ? Math.max(0.5, Math.sqrt(40 / n)) : 1);
+    this.L = this.L_EDGE * (this.R / this.R0);
+  }
+};
+// 노드가 머물 수 있는 범위 (학과 상자 배치면 자기 칸, 아니면 캔버스)
+TT.Force.prototype.limitsOf = function (nd) {
+  if (nd.reg) {
+    const R = this.R, r = nd.reg;
+    const x0 = r.x0 + R + 3, x1 = r.x1 - R - 3, y0 = r.y0 + R + 3, y1 = r.y1 - R - 14;
+    return { x0: Math.min(x0, (r.x0 + r.x1) / 2), x1: Math.max(x1, (r.x0 + r.x1) / 2), y0: Math.min(y0, (r.y0 + r.y1) / 2), y1: Math.max(y1, (r.y0 + r.y1) / 2) };
+  }
+  return this.bounds();
+};
+TT.Force.prototype.clampFor = function (id, x, y) {
+  const nd = this.byId.get(id); if (!nd) return { x: x, y: y };
+  const L = this.limitsOf(nd);
+  return { x: Math.max(L.x0, Math.min(L.x1, x)), y: Math.max(L.y0, Math.min(L.y1, y)) };
 };
 TT.Force.prototype.reheat = function (a) { this.alpha = Math.max(this.alpha, a == null ? 1 : a); this.running = this.nodes.length > 0; };
 TT.Force.prototype.pin = function (id, x, y) { const nd = this.byId.get(id); if (nd) { nd.fx = x; nd.fy = y; nd.x = x; nd.y = y; nd.vx = nd.vy = 0; } };
@@ -1035,6 +1195,7 @@ TT.Force.prototype.step = function () {
   const minD = 2 * R + 8;
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
     const a = nodes[i], b = nodes[j];
+    if (a.box !== b.box) continue; // 다른 칸끼리는 밀어내지 않는다
     let dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
     if (d2 < 1) { dx = (this.rand() - .5) * 2; dy = (this.rand() - .5) * 2; d2 = dx * dx + dy * dy || 1; }
     const d = Math.sqrt(d2);
@@ -1053,13 +1214,15 @@ TT.Force.prototype.step = function () {
   for (let i = 0; i < n; i++) {
     const nd = nodes[i];
     if (nd.fx != null) { nd.x = nd.fx; nd.y = nd.fy; nd.vx = nd.vy = 0; continue; }
-    nd.ax += (W / 2 - nd.x) * g; nd.ay += (H / 2 - nd.y) * g;
+    const gx = nd.reg ? (nd.reg.x0 + nd.reg.x1) / 2 : W / 2, gy = nd.reg ? (nd.reg.y0 + nd.reg.y1) / 2 : H / 2;
+    nd.ax += (gx - nd.x) * g; nd.ay += (gy - nd.y) * g;
     nd.vx = (nd.vx + nd.ax * alpha) * this.DAMPING; nd.vy = (nd.vy + nd.ay * alpha) * this.DAMPING;
     const v = Math.sqrt(nd.vx * nd.vx + nd.vy * nd.vy);
     if (v > this.MAX_V) { nd.vx *= this.MAX_V / v; nd.vy *= this.MAX_V / v; }
     nd.x += nd.vx; nd.y += nd.vy;
-    if (nd.x < B.x0) { nd.x = B.x0; nd.vx = 0; } else if (nd.x > B.x1) { nd.x = B.x1; nd.vx = 0; }
-    if (nd.y < B.y0) { nd.y = B.y0; nd.vy = 0; } else if (nd.y > B.y1) { nd.y = B.y1; nd.vy = 0; }
+    const Lm = nd.reg ? this.limitsOf(nd) : B;
+    if (nd.x < Lm.x0) { nd.x = Lm.x0; nd.vx = 0; } else if (nd.x > Lm.x1) { nd.x = Lm.x1; nd.vx = 0; }
+    if (nd.y < Lm.y0) { nd.y = Lm.y0; nd.vy = 0; } else if (nd.y > Lm.y1) { nd.y = Lm.y1; nd.vy = 0; }
   }
   this.alpha *= (1 - this.ALPHA_DECAY);
   if (this.alpha < this.ALPHA_MIN) { this.alpha = 0; this.running = false; }
@@ -1300,6 +1463,42 @@ TT.runSelfTests = function () {
     eq(back.interests.levels, ['학사'], '과정 필터 저장'); eq(back.courses[0].level, '학사');
     eq(TT.coursesFromCSV(TT.toCSV(cs)).courses.map(function (c) { return c.level; }), ['학사', '석사', '박사', null], 'CSV 왕복');
   });
+  t('번호대·분야 칸 규칙', function () {
+    const G = function (code, extra) { return TT.subgroupOf(C('x', 'X', '01', [], Object.assign({ code: code }, extra || {}))); };
+    const a = G('GS1001'); eq([a.col, a.colLabel, a.band, a.bandLabel], ['gs-f0', '수학', 'L1', '1000번대'], 'GS 백의 자리 = 분야, 천의 자리 = 난이도');
+    eq(G('GS2004').col, 'gs-f0', '같은 분야는 같은 칸'); eq(G('GS2004').band, 'L2');
+    eq([G('GS1101').colLabel, G('GS1201').colLabel, G('GS1301').colLabel, G('GS1401').colLabel], ['물리', '화학', '생명', '컴퓨터·공학']);
+    eq([G('GS0101').col, G('GS0213').col, G('GS0101').band], ['gs-arts', 'gs-arts', null], '0천번대는 예체능 한 칸');
+    eq([G('EC3202').col, G('EC3202').colLabel, G('EC3202').band], ['th3', '3000번대', null], '전공은 천의 자리만');
+    eq(G('EC9102', { kind: '연구' }).col, 'research', '연구 과목은 한 칸'); eq(G('AI9501', { name: '개별연구 Ⅰ' }).col, 'research');
+    eq(TT.subgroupOf(C('y', '코드없음', '01', [])).col, 'etc');
+  });
+  t('학과 상자 배치', function () {
+    const cs = [];
+    ['GS1001', 'GS1101', 'GS2004', 'GS0101', 'GS1401', 'GS1401'].forEach(function (code, i) { cs.push(C('g' + i, 'G' + i, String(i + 1).padStart(2, '0'), [], { code: code, dept: '도전탐색과정' })); });
+    ['EC2001', 'EC3202', 'EC3202', 'EC4301', 'EC9102'].forEach(function (code, i) { cs.push(C('e' + i, 'E' + i, String(i + 1).padStart(2, '0'), [], { code: code, dept: '전기전자컴퓨터공학과', kind: code === 'EC9102' ? '연구' : '선택' })); });
+    const L = TT.groupLayout(cs);
+    eq(L.boxes.map(function (b) { return b.dept; }), ['도전탐색과정', '전기전자컴퓨터공학과'], '과목 수 많은 학과부터');
+    eq(L.boxes[0].cols.map(function (c) { return c.label; }), ['예체능', '수학', '물리', '컴퓨터·공학'], 'GS 칸: 예체능 → 분야 순');
+    eq(L.boxes[0].bands, ['1000번대', '2000번대'], 'GS 난이도 띠');
+    eq(L.boxes[1].cols.map(function (c) { return c.label; }), ['2000번대', '3000번대', '4000번대', '연구'], '전공 칸: 번호대 → 연구');
+    eq(L.boxes[1].cols[1].count, 2);
+    ok(cs.every(function (c) { return L.regions.has(c.id) && L.seeds.has(c.id); }), '모든 과목에 영역');
+    const b0 = L.boxes[0], b1 = L.boxes[1];
+    ok(b0.x + b0.w <= b1.x || b1.x + b1.w <= b0.x || b0.y + b0.h <= b1.y || b1.y + b1.h <= b0.y, '상자가 겹치지 않음');
+    ok(cs.every(function (c) { const r = L.regions.get(c.id), b = L.boxes.find(function (x) { return x.dept === r.box; }), sd = L.seeds.get(c.id);
+      return r.x0 >= b.x && r.x1 <= b.x + b.w && r.y0 >= b.y && r.y1 <= b.y + b.h && sd.x > r.x0 && sd.x < r.x1 && sd.y > r.y0 && sd.y < r.y1; }), '영역은 상자 안, 첫 자리는 영역 안');
+    const rMath1 = L.regions.get('g0'), rMath2 = L.regions.get('g2');
+    ok(rMath1.x0 === rMath2.x0 && rMath1.y1 <= rMath2.y0, '같은 분야의 1000번대가 2000번대 위');
+    eq(JSON.stringify(TT.groupLayout(cs).boxes), JSON.stringify(L.boxes), '결정적');
+    ok(L.width >= b0.x + b0.w && L.height >= Math.max(b0.y + b0.h, b1.y + b1.h), '캔버스가 상자를 포함');
+    const g = TT.buildGraph(cs.map(function (c, i) { return Object.assign({}, c, { slots: [S(1, '09:00', '10:30')] }); }));
+    const f = new TT.Force({ seed: 2 }); f.setGraph(g.nodes, g.edges, L); f.reheat(1); let k = 0; while (f.running && k < 3000) { f.step(); k++; }
+    ok(f.nodes.every(function (nd) { const lm = f.limitsOf(nd); return nd.x >= lm.x0 - 0.01 && nd.x <= lm.x1 + 0.01 && nd.y >= lm.y0 - 0.01 && nd.y <= lm.y1 + 0.01 && Number.isFinite(nd.x); }), '모든 노드가 자기 칸 안');
+    eq(f.edgeRefs.every(function (p) { return p[0].box === p[1].box; }), true, '학과 사이 간선은 힘을 주지 않음');
+    const q = f.clampFor('g0', -1000, -1000), r0 = L.regions.get('g0'); ok(q.x >= r0.x0 && q.y >= r0.y0, '드래그도 칸 안으로');
+    f.setGraph(g.nodes, g.edges, null); ok(f.nodes.every(function (nd) { return !nd.reg; }) && f.W === 800, '상자 배치를 끄면 원래대로');
+  });
   const fixture = function () {
     // A-B, B-C, C-D (경로), E 고립
     return TT.buildGraph([
@@ -1494,7 +1693,7 @@ function h(tag, attrs, ...children) {
 }
 function svg(tag, attrs) { const e = document.createElementNS(SVG_NS, tag); if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
 const hueOf = c => TT.PALETTE[store.colors.get(c.name) || 0];
-const shortName = n => n.length > 9 ? n.slice(0, 8) + '…' : n;
+const shortName = (n, max = 9) => n.length > max ? n.slice(0, max - 1) + '…' : n;
 const ymd = () => { const d = new Date(); return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'); };
 
 // ---------- 테마 ----------
@@ -1634,7 +1833,8 @@ const store = {
 
 // ---------- Graph view ----------
 const graphView = {
-  svg: $('#graph'), gEdges: $('#g-edges'), gHits: $('#g-edge-hits'), gNodes: $('#g-nodes'), emptyMsg: $('#graph-empty'),
+  svg: $('#graph'), gBoxes: $('#g-boxes'), gEdges: $('#g-edges'), gHits: $('#g-edge-hits'), gNodes: $('#g-nodes'), emptyMsg: $('#graph-empty'),
+  layout: null, vb: { x: 0, y: 0, w: 800, h: 600 }, pan: null,
   sim: new TT.Force({ seed: 7 }), nodeEls: new Map(), edgeEls: [], raf: null, drag: null,
   init() {
     store.subscribe(type => {
@@ -1658,24 +1858,94 @@ const graphView = {
       if (n || hit) { if (n) store.setHover(null); tooltip.hide(); }
     });
     s.addEventListener('contextmenu', e => { if (e.target.closest('.node')) e.preventDefault(); });
+    // 확대·이동 (학과 상자 배치에서 캔버스가 커지므로)
+    s.addEventListener('wheel', e => {
+      const narrow = innerWidth <= 1024;
+      if (narrow && !e.ctrlKey && !e.metaKey) return; // 좁은 화면에서는 페이지 스크롤을 뺏지 않는다
+      e.preventDefault();
+      const k = Math.exp(Math.max(-60, Math.min(60, e.deltaY)) * (e.ctrlKey ? 0.01 : 0.0025));
+      this.zoomAt(this.toSvg(e), k);
+    }, { passive: false });
+    s.addEventListener('dblclick', e => { if (!e.target.closest('.node')) this.fit(); });
+    $('#btn-fit').addEventListener('click', () => this.fit());
+    $('#btn-zoom-in').addEventListener('click', () => this.zoomAt({ x: this.vb.x + this.vb.w / 2, y: this.vb.y + this.vb.h / 2 }, 1 / 1.4));
+    $('#btn-zoom-out').addEventListener('click', () => this.zoomAt({ x: this.vb.x + this.vb.w / 2, y: this.vb.y + this.vb.h / 2 }, 1.4));
+    new ResizeObserver(() => this.updateDensity()).observe(s);
+  },
+  setViewBox() { const v = this.vb; this.svg.setAttribute('viewBox', `${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}`); this.updateDensity(); },
+  fit() {
+    // 과목이 적어도 지나치게 확대되지 않도록 최소 크기를 둔다
+    const W = this.sim.W, H = this.sim.H, w = this.layout ? Math.max(W, 760) : W, h = this.layout ? Math.max(H, 520) : H;
+    this.vb = { x: (W - w) / 2, y: (H - h) / 2, w: w, h: h }; this.setViewBox();
+  },
+  zoomAt(p, k) {
+    const v = this.vb, maxW = this.sim.W * 1.6, minW = Math.min(240, this.sim.W);
+    const nw = Math.max(minW, Math.min(maxW, v.w * k)), f = nw / v.w;
+    this.vb = { x: p.x - (p.x - v.x) * f, y: p.y - (p.y - v.y) * f, w: nw, h: v.h * f };
+    this.setViewBox();
+  },
+  // 화면에서 원이 충분히 크면 과목명을 모두 보이고, 작으면 호버·이웃·선택만
+  updateDensity() {
+    const cw = this.svg.clientWidth || 800, ch = this.svg.clientHeight || 600;
+    const scale = Math.min(cw / this.vb.w, ch / this.vb.h);
+    this.svg.classList.toggle('dense', this.sim.R * scale < 10.5 && this.nodeEls.size > 20);
+  },
+  drawBoxes(L) {
+    this.gBoxes.replaceChildren();
+    $('#graph-tools').hidden = !L;
+    $('#graph-hint').textContent = L ? '클릭: 선택/해제 · 휠: 확대 · 빈 곳 드래그: 화면 이동 · 더블클릭: 전체 보기' : '클릭: 선택/해제 · 드래그: 이동 · 마우스 올리기: 이유 보기';
+    if (!L) return;
+    L.boxes.forEach(b => {
+      const g = svg('g', { class: 'box' });
+      g.append(svg('rect', { class: 'box-bg', x: b.x, y: b.y, width: b.w, height: b.h, rx: 12 }));
+      const t = svg('text', { class: 'box-title', x: b.x + 12, y: b.y + 21 });
+      t.append(document.createTextNode(TT.deptLabel(b.dept) + ' '));
+      const cnt = svg('tspan', { class: 'box-count' }); cnt.textContent = b.count + '과목'; t.append(cnt);
+      g.append(t);
+      b.cols.forEach((c, i) => {
+        g.append(svg('rect', { class: 'col-bg' + (i % 2 ? ' alt' : ''), x: c.x, y: c.y, width: c.w, height: c.h, rx: 6 }));
+        const ct = svg('text', { class: 'col-title', x: c.x + c.w / 2, y: c.y - 7 }); ct.textContent = `${c.label} ${c.count}`; g.append(ct);
+        c.bands.forEach((bd, j) => {
+          if (j > 0) g.append(svg('line', { class: 'band-line', x1: c.x + 4, x2: c.x + c.w - 4, y1: bd.y - 2, y2: bd.y - 2 }));
+          if (bd.used) { const bt = svg('text', { class: 'band-title', x: c.x + 5, y: bd.y + 11 }); bt.textContent = bd.label; g.append(bt); }
+        });
+      });
+      this.gBoxes.append(g);
+    });
   },
   toSvg(e) { const pt = this.svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(this.svg.getScreenCTM().inverse()); },
   onDown(e) {
-    if (this.drag) return;
-    const n = e.target.closest('.node'); if (!n || e.button !== 0) return;
+    if (this.drag || this.pan) return;
+    const n = e.target.closest('.node');
+    if (!n && e.button === 0 && this.layout && !e.target.closest('.edge-hit')) {
+      // 빈 곳을 끌면 화면 이동
+      const ctm = this.svg.getScreenCTM();
+      this.pan = { cx: e.clientX, cy: e.clientY, vb0: Object.assign({}, this.vb), upp: 1 / ctm.a, pointerId: e.pointerId };
+      try { this.svg.setPointerCapture(e.pointerId); } catch (err) {}
+      this.svg.classList.add('panning');
+      return;
+    }
+    if (!n || e.button !== 0) return;
     this.drag = { id: n.dataset.id, el: n, cx: e.clientX, cy: e.clientY, moved: false, pointerId: e.pointerId };
     try { this.svg.setPointerCapture(e.pointerId); } catch (err) {}
     e.preventDefault();
   },
   onMove(e) {
+    if (this.pan) {
+      if (e.pointerId !== this.pan.pointerId) return;
+      const P = this.pan;
+      this.vb = Object.assign({}, P.vb0, { x: P.vb0.x - (e.clientX - P.cx) * P.upp, y: P.vb0.y - (e.clientY - P.cy) * P.upp });
+      this.setViewBox();
+      return;
+    }
     const d = this.drag;
     if (d) {
       if (e.pointerId !== d.pointerId) return;
       // 드래그 판정은 화면 픽셀 기준 (SVG가 작게 그려져도 탭이 드래그로 오인되지 않게)
       if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) > 5) { d.moved = true; tooltip.hide(); }
       if (d.moved) {
-        const p = this.toSvg(e), b = this.sim.bounds();
-        this.sim.pin(d.id, Math.max(b.x0, Math.min(b.x1, p.x)), Math.max(b.y0, Math.min(b.y1, p.y)));
+        const p = this.toSvg(e), q = this.sim.clampFor(d.id, p.x, p.y); // 학과 상자 배치면 자기 칸 안에서만
+        this.sim.pin(d.id, q.x, q.y);
         this.sim.reheat(0.3); this.startLoop();
       }
       return;
@@ -1683,6 +1953,10 @@ const graphView = {
     if (!tooltip.el.hidden) tooltip.move(e.clientX, e.clientY);
   },
   onUp(e) {
+    if (this.pan && e.pointerId === this.pan.pointerId) {
+      try { this.svg.releasePointerCapture(this.pan.pointerId); } catch (err) {}
+      this.pan = null; this.svg.classList.remove('panning'); return;
+    }
     const d = this.drag; if (!d || e.pointerId !== d.pointerId) return;
     this.drag = null;
     try { this.svg.releasePointerCapture(d.pointerId); } catch (err) {}
@@ -1715,8 +1989,13 @@ const graphView = {
   rebuild() {
     const g = store.graph;
     this.gEdges.replaceChildren(); this.gHits.replaceChildren();
+    const L = TT.hasGroupInfo(g.nodes) ? TT.groupLayout(g.nodes) : null;
+    const regOf = id => L ? L.regions.get(id) : null;
     this.edgeEls = g.edges.map((e, i) => {
-      const line = svg('line', { class: 'edge ' + (e.section ? 'section' : 'time') });
+      // 다른 학과 상자 사이(cross)와 같은 상자의 다른 칸 사이(far) 간선은 연하게, 호버하면 진하게
+      const ra = regOf(e.a), rb = regOf(e.b);
+      const cls = !L || !ra || !rb ? '' : ra.box !== rb.box ? ' cross' : ra.cell !== rb.cell ? ' far' : '';
+      const line = svg('line', { class: 'edge ' + (e.section ? 'section' : 'time') + cls });
       const hit = svg('line', { class: 'edge-hit', 'data-i': i });
       this.gEdges.append(line); this.gHits.append(hit);
       return { line, hit, e };
@@ -1725,10 +2004,13 @@ const graphView = {
     g.nodes.forEach(c => { if (!this.nodeEls.has(c.id)) { const el = this.createNode(c); this.gNodes.append(el); this.nodeEls.set(c.id, el); } });
     this.emptyMsg.toggleAttribute('hidden', g.nodes.length > 0); // SVG 요소에는 .hidden 속성이 없다
     this.emptyMsg.textContent = store.courses.length ? '왼쪽에서 관심 학과를 고르거나 과목을 검색해 추가하세요' : '과목을 추가하거나 샘플을 불러오세요';
-    this.sim.setGraph(g.nodes, g.edges);
-    const R = this.sim.R, dense = g.nodes.length > 60;
-    this.svg.classList.toggle('dense', dense);
-    this.nodeEls.forEach(el => { el.querySelector('circle').setAttribute('r', R.toFixed(1)); el.querySelector('.name').setAttribute('y', (R + 15).toFixed(1)); });
+    const sizeChanged = !this.layout !== !L || (L && this.layout && (L.width !== this.layout.width || L.height !== this.layout.height));
+    this.layout = L;
+    this.sim.setGraph(g.nodes, g.edges, L);
+    this.drawBoxes(L);
+    const R = this.sim.R;
+    this.nodeEls.forEach(el => { el.querySelector('circle').setAttribute('r', R.toFixed(1)); el.querySelector('.name').setAttribute('y', (R + 13).toFixed(1)); });
+    if (sizeChanged || !L) this.fit(); else this.updateDensity();
     this.updateStates(); this.updateHover();
     this.sim.reheat(1); this.render(); this.startLoop();
   },
@@ -1739,7 +2021,7 @@ const graphView = {
       el.dataset.state = store.selected.has(id) ? 'selected' : store.state.blocked.has(id) ? 'blocked' : 'normal';
       el.style.setProperty('--h', hueOf(c));
       el.querySelector('.sec').textContent = c.section;
-      el.querySelector('.name').textContent = shortName(c.name);
+      el.querySelector('.name').textContent = shortName(c.name, this.layout ? 7 : 9);
     });
   },
   updateHover() {
