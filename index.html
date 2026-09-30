@@ -14,6 +14,8 @@
   --blocked: #b9bec6; --blocked-bg: #e9ebef; --edge: #b4bac3; --edge-dim: #e2e5ea; --edge-hi: #1c2128;
   --shadow: 0 6px 24px rgba(20,30,50,.12);
   --hour-h: 48px; --radius: 10px;
+  --blk-s: 70%; --blk-bg-l: 90%; --blk-fg-l: 24%;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -23,6 +25,8 @@
     --node-fill: #171b21; --node-l: 58%; --node-s: 60%; --node-text: #0f1216;
     --blocked: #4a525d; --blocked-bg: #232931; --edge: #4a525d; --edge-dim: #2a3038; --edge-hi: #e6e9ee;
     --shadow: 0 6px 24px rgba(0,0,0,.45);
+    --blk-s: 45%; --blk-bg-l: 24%; --blk-fg-l: 86%;
+    color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
@@ -32,6 +36,8 @@
   --node-fill: #171b21; --node-l: 58%; --node-s: 60%; --node-text: #0f1216;
   --blocked: #4a525d; --blocked-bg: #232931; --edge: #4a525d; --edge-dim: #2a3038; --edge-hi: #e6e9ee;
   --shadow: 0 6px 24px rgba(0,0,0,.45);
+  --blk-s: 45%; --blk-bg-l: 24%; --blk-fg-l: 86%;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -79,23 +85,30 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---------- course list ---------- */
 #course-list { list-style: none; margin: 0; padding: 6px; }
 #course-list li {
-  display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: center;
-  padding: 8px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  border-radius: 8px; border: 1px solid transparent;
 }
 #course-list li:hover, #course-list li.hover { background: var(--panel-2); }
 #course-list li[data-state="selected"] { background: var(--accent-bg); border-color: var(--accent); }
-#course-list li[data-state="blocked"] { opacity: .55; cursor: not-allowed; }
+#course-list .pick {
+  display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 8px; align-items: center; min-width: 0;
+  background: none; border: 0; padding: 8px; margin: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; border-radius: 8px;
+}
+#course-list .pick:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#course-list .txt { display: block; min-width: 0; }
+#course-list li[data-state="blocked"] .pick { cursor: not-allowed; }
+#course-list li[data-state="blocked"] .title { color: var(--muted); }
 #course-list .dot { width: 12px; height: 12px; border-radius: 50%; background: hsl(var(--h) var(--node-s) var(--node-l)); }
 #course-list li[data-state="blocked"] .dot { background: var(--blocked); }
-#course-list .title { font-weight: 600; font-size: 13px; }
+#course-list .title { display: block; font-weight: 600; font-size: 13px; }
 #course-list .title .sec { color: var(--muted); font-weight: 400; margin-left: 4px; }
-#course-list .meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#course-list .meta { display: block; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #course-list .badge {
   display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); margin-left: 4px;
 }
 #course-list li[data-state="selected"] .badge.state { background: var(--accent); color: #fff; }
 #course-list li[data-state="blocked"] .badge.state { background: var(--blocked-bg); color: var(--muted); }
-#course-list .ops { display: flex; gap: 4px; opacity: 0; }
+#course-list .ops { display: flex; gap: 4px; opacity: 0; padding-right: 8px; }
 #course-list li:hover .ops, #course-list li:focus-within .ops { opacity: 1; }
 .sidebar-foot {
   border-top: 1px solid var(--line); padding: 10px 14px; display: flex; align-items: center; gap: 8px; font-size: 13px;
@@ -115,7 +128,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .legend i.dashed { border-top-style: dashed; }
 .legend b { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
 .legend b.sel { background: hsl(215 62% 46%); }
-.legend b.blk { background: var(--blocked-bg); border: 2px solid var(--blocked); }
+.legend b.blk-sw { background: var(--blocked-bg); border: 2px solid var(--blocked); }
 
 .edge { stroke: var(--edge); stroke-width: 1.6; fill: none; transition: stroke .15s, opacity .15s; }
 .edge.section { stroke-dasharray: 6 5; }
@@ -143,7 +156,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .node.hover circle, .node.neighbor circle { stroke-width: 4.5; }
 .node.hover circle { filter: drop-shadow(0 0 6px hsl(var(--h) var(--node-s) var(--node-l) / .6)); }
 .node.faded { opacity: .35; }
-.node.shake { animation: shake .3s; }
 @keyframes shake { 0%,100%{transform:translate(0,0)} 25%{transform:translate(-4px,0)} 75%{transform:translate(4px,0)} }
 .node.shake > g { animation: shake .3s; }
 #graph .empty-msg { fill: var(--muted); font-size: 15px; text-anchor: middle; }
@@ -158,25 +170,26 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #grid .day-head.weekend { color: var(--danger); }
 #grid .time-col { position: relative; height: calc(var(--hours) * var(--hour-h)); border-right: 1px solid var(--line); }
 #grid .time-col .t { position: absolute; right: 6px; transform: translateY(-50%); font-size: 11px; color: var(--muted); }
+#grid .time-col .t:first-child { transform: none; }
+#grid .time-col .t:last-child { transform: translateY(-100%); }
 #grid .day-col {
   position: relative; height: calc(var(--hours) * var(--hour-h)); border-right: 1px solid var(--line-2);
   background: repeating-linear-gradient(to bottom, var(--line-2) 0 1px, transparent 1px var(--hour-h));
 }
 #grid .day-col.weekend { background-color: color-mix(in srgb, var(--panel) 92%, var(--danger)); }
 .blk {
-  position: absolute; left: 2px; right: 2px; border-radius: 6px; padding: 3px 5px; overflow: hidden;
-  background: hsl(var(--h) var(--node-s) var(--node-l)); color: #fff; font-size: 11px; line-height: 1.3;
-  box-shadow: 0 1px 2px rgba(0,0,0,.15); cursor: pointer; z-index: 1;
+  position: absolute; left: 2px; right: 2px; border-radius: 6px; padding: 3px 5px 3px 6px; overflow: hidden;
+  background: hsl(var(--h) var(--blk-s) var(--blk-bg-l)); color: hsl(var(--h) var(--blk-s) var(--blk-fg-l));
+  border-left: 3px solid hsl(var(--h) var(--node-s) var(--node-l));
+  font-size: 11px; line-height: 1.3; box-shadow: 0 1px 2px rgba(0,0,0,.12); cursor: pointer; z-index: 1;
 }
 .blk .n { font-weight: 700; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.blk .m { opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk .m { opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .blk.hover { outline: 2px solid var(--edge-hi); outline-offset: -2px; }
 .blk.ghost {
-  background: hsl(var(--h) var(--node-s) var(--node-l) / .18); color: hsl(var(--h) var(--node-s) calc(var(--node-l) - 8%));
-  border: 2px dashed hsl(var(--h) var(--node-s) var(--node-l)); pointer-events: none; z-index: 2;
+  background: hsl(var(--h) var(--blk-s) var(--blk-bg-l) / .55);
+  border: 2px dashed hsl(var(--h) var(--node-s) var(--node-l)); box-shadow: none; pointer-events: none; z-index: 2;
 }
-:root[data-theme="dark"] .blk.ghost { color: hsl(var(--h) var(--node-s) 75%); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .blk.ghost { color: hsl(var(--h) var(--node-s) 75%); } }
 .blk.ghost.blocked {
   border-color: var(--danger); color: var(--danger);
   background: repeating-linear-gradient(45deg, var(--danger-bg) 0 6px, transparent 6px 12px);
@@ -226,6 +239,11 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
   max-width: min(520px, calc(100vw - 32px)); animation: toast-in .2s ease-out;
 }
 .toast.error { background: var(--danger); color: #fff; }
+.toast-row { display: flex; align-items: flex-start; gap: 10px; }
+.toast-row > span { flex: 1; white-space: pre-line; }
+.toast-btn { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 6px; padding: 1px 8px; font-size: 12px; }
+.toast-x { border: 0; background: transparent; color: inherit; opacity: .7; font-size: 16px; line-height: 1; padding: 0 2px; }
+.toast-x:hover, .toast-btn:hover { opacity: 1; filter: brightness(1.2); }
 .toast details { margin-top: 4px; } .toast summary { cursor: pointer; } .toast ul { margin: 4px 0 0; padding-left: 18px; max-height: 160px; overflow: auto; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px);} to { opacity: 1; transform: none;} }
 #drop-overlay {
@@ -263,7 +281,7 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
     <button class="btn" id="btn-import" type="button" title="JSON 또는 CSV 파일 (드래그 앤 드롭도 가능)">파일 불러오기</button>
     <button class="btn" id="btn-export" type="button">JSON 내보내기</button>
     <button class="btn" id="btn-sample" type="button" title="내장 샘플 데이터로 되돌립니다">샘플로 초기화</button>
-    <button class="btn" id="btn-theme" type="button" title="라이트/다크 전환">🌓</button>
+    <button class="btn" id="btn-theme" type="button" title="라이트/다크 전환" aria-label="라이트/다크 전환">🌓</button>
   </div>
 </header>
 
@@ -294,7 +312,7 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
       <span><i></i> 시간 겹침</span>
       <span><i class="dashed"></i> 같은 과목 · 다른 분반</span>
       <span><b class="sel"></b> 선택됨</span>
-      <span><b class="blk"></b> 선택 불가 (선택한 수업과 충돌)</span>
+      <span><b class="blk-sw"></b> 선택 불가 (선택한 수업과 충돌)</span>
     </div>
   </section>
 
@@ -304,7 +322,7 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
   </section>
 </main>
 
-<dialog id="course-dialog">
+<dialog id="course-dialog" aria-labelledby="dialog-title">
   <form id="course-form" method="dialog" novalidate>
     <h2 id="dialog-title">과목 추가</h2>
     <div class="row three">
@@ -320,7 +338,7 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
       <button class="btn small" type="button" id="btn-add-slot">＋ 시간 추가</button>
     </div>
     <div id="slot-rows"></div>
-    <ul class="form-errors" id="form-errors"></ul>
+    <ul class="form-errors" id="form-errors" role="alert"></ul>
     <div class="dialog-actions">
       <button class="btn" type="button" id="btn-cancel">취소</button>
       <button class="btn primary" type="submit" id="btn-save">저장</button>
@@ -567,8 +585,10 @@ TT.parseCSV = function (text) {
   text = String(text == null ? '' : text);
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const rows = [], lines = [];
-  let row = [], cell = '', inQ = false, line = 1, rowLine = 1, i = 0;
-  const pushRow = function () { row.push(cell); rows.push(row); lines.push(rowLine); row = []; cell = ''; rowLine = line; };
+  // 큰따옴표는 칸의 맨 앞에 올 때만 인용을 시작한다 (칸 중간의 " 는 그냥 글자)
+  let row = [], cell = '', inQ = false, atStart = true, line = 1, rowLine = 1, quoteLine = 0, i = 0;
+  const endCell = function () { row.push(cell); cell = ''; atStart = true; };
+  const pushRow = function () { endCell(); rows.push(row); lines.push(rowLine); row = []; rowLine = line; };
   while (i < text.length) {
     const ch = text[i];
     if (inQ) {
@@ -576,14 +596,14 @@ TT.parseCSV = function (text) {
       if (ch === '\n') line++;
       cell += ch; i++; continue;
     }
-    if (ch === '"') { inQ = true; i++; continue; }
-    if (ch === ',') { row.push(cell); cell = ''; i++; continue; }
+    if (ch === '"' && atStart) { inQ = true; atStart = false; quoteLine = line; i++; continue; }
+    if (ch === ',') { endCell(); i++; continue; }
     if (ch === '\r') { if (text[i + 1] === '\n') i++; line++; pushRow(); i++; continue; }
     if (ch === '\n') { line++; pushRow(); i++; continue; }
-    cell += ch; i++;
+    cell += ch; atStart = false; i++;
   }
-  if (cell !== '' || row.length) pushRow();
-  return { rows: rows, lines: lines };
+  if (cell !== '' || row.length || !atStart) pushRow();
+  return { rows: rows, lines: lines, unterminated: inQ, quoteLine: inQ ? quoteLine : 0 };
 };
 
 const CSV_ALIASES = {
@@ -599,6 +619,7 @@ const CSV_ALIASES = {
 TT.coursesFromCSV = function (text) {
   const errors = [], warnings = [];
   const parsed = TT.parseCSV(text);
+  if (parsed.unterminated) errors.push({ line: parsed.quoteLine, message: '닫히지 않은 큰따옴표(")가 있어 이 줄부터 파일 끝까지가 한 칸으로 합쳐졌을 수 있습니다' });
   const rows = [], lines = [];
   parsed.rows.forEach(function (r, i) { if (r.some(function (c) { return TT.nfc(c) !== ''; })) { rows.push(r); lines.push(parsed.lines[i]); } });
   if (!rows.length) return { courses: [], errors: [{ line: 0, message: '비어 있는 파일입니다' }], warnings: warnings };
@@ -660,7 +681,9 @@ TT.coursesFromJSON = function (text) {
     if (ids.has(n.course.id)) { warnings.push((i + 1) + '번째 항목의 id가 중복되어 새 id를 부여했습니다'); n.course.id = TT.uid(); }
     keys.add(key); ids.add(n.course.id); courses.push(n.course);
   });
-  let selected = Array.isArray(data.selected) ? data.selected.filter(function (id) { return ids.has(id); }) : [];
+  const rawSel = Array.isArray(data.selected) ? data.selected.map(function (id) { return String(id == null ? '' : id).trim(); }) : [];
+  let selected = rawSel.filter(function (id) { return ids.has(id); });
+  if (rawSel.length > selected.length) warnings.push('선택 목록에서 찾을 수 없는 id ' + (rawSel.length - selected.length) + '개를 무시했습니다');
   const pr = TT.pruneSelection(TT.buildGraph(courses), new Set(selected));
   pr.dropped.forEach(function (d) {
     const c = courses.find(function (x) { return x.id === d.id; });
@@ -721,7 +744,9 @@ TT.mulberry32 = function (seed) {
 
 TT.Force = function (opts) {
   opts = opts || {};
-  this.W = opts.W || 800; this.H = opts.H || 600; this.R = opts.R || 22; this.PAD = opts.PAD || 34;
+  this.W = opts.W || 800; this.H = opts.H || 600; this.R = opts.R || 22;
+  // 원 아래 과목명 라벨이 잘리지 않도록 좌우·아래 여백을 넉넉히 둔다
+  this.PAD_X = opts.PAD_X || 58; this.PAD_T = opts.PAD_T || 30; this.PAD_B = opts.PAD_B || 52;
   this.K_REPEL = 16000; this.L_EDGE = 170; this.K_SPRING = 0.03; this.K_GRAVITY = 0.004; this.K_COLLIDE = 0.5;
   this.DAMPING = 0.85; this.MAX_V = 10; this.ALPHA_DECAY = 0.025; this.ALPHA_MIN = 0.003;
   this.rand = TT.mulberry32(opts.seed == null ? 7 : opts.seed);
@@ -752,9 +777,11 @@ TT.Force.prototype.setGraph = function (courses, edges) {
 TT.Force.prototype.reheat = function (a) { this.alpha = Math.max(this.alpha, a == null ? 1 : a); this.running = this.nodes.length > 0; };
 TT.Force.prototype.pin = function (id, x, y) { const nd = this.byId.get(id); if (nd) { nd.fx = x; nd.fy = y; nd.x = x; nd.y = y; nd.vx = nd.vy = 0; } };
 TT.Force.prototype.unpin = function (id) { const nd = this.byId.get(id); if (nd) { nd.fx = nd.fy = null; } };
+TT.Force.prototype.bounds = function () { return { x0: this.PAD_X, x1: this.W - this.PAD_X, y0: this.PAD_T, y1: this.H - this.PAD_B }; };
+TT.Force.prototype.unpinAll = function () { this.nodes.forEach(function (nd) { nd.fx = nd.fy = null; }); };
 TT.Force.prototype.positions = function () { const m = new Map(); this.nodes.forEach(function (nd) { m.set(nd.id, { x: nd.x, y: nd.y }); }); return m; };
 TT.Force.prototype.step = function () {
-  const nodes = this.nodes, n = nodes.length, W = this.W, H = this.H, PAD = this.PAD, R = this.R, alpha = this.alpha;
+  const nodes = this.nodes, n = nodes.length, W = this.W, H = this.H, B = this.bounds(), R = this.R, alpha = this.alpha;
   if (!this.running || n === 0) { this.running = false; return; }
   for (let i = 0; i < n; i++) { nodes[i].ax = 0; nodes[i].ay = 0; }
   const minD = 2 * R + 8;
@@ -783,8 +810,8 @@ TT.Force.prototype.step = function () {
     const v = Math.sqrt(nd.vx * nd.vx + nd.vy * nd.vy);
     if (v > this.MAX_V) { nd.vx *= this.MAX_V / v; nd.vy *= this.MAX_V / v; }
     nd.x += nd.vx; nd.y += nd.vy;
-    if (nd.x < PAD) { nd.x = PAD; nd.vx = 0; } else if (nd.x > W - PAD) { nd.x = W - PAD; nd.vx = 0; }
-    if (nd.y < PAD) { nd.y = PAD; nd.vy = 0; } else if (nd.y > H - PAD) { nd.y = H - PAD; nd.vy = 0; }
+    if (nd.x < B.x0) { nd.x = B.x0; nd.vx = 0; } else if (nd.x > B.x1) { nd.x = B.x1; nd.vx = 0; }
+    if (nd.y < B.y0) { nd.y = B.y0; nd.vy = 0; } else if (nd.y > B.y1) { nd.y = B.y1; nd.vy = 0; }
   }
   this.alpha *= (1 - this.ALPHA_DECAY);
   if (this.alpha < this.ALPHA_MIN) { this.alpha = 0; this.running = false; }
@@ -964,6 +991,17 @@ TT.runSelfTests = function () {
     eq(r.lines, [1, 2, 3, 4]);
     eq(TT.parseCSV('').rows, []); eq(TT.parseCSV('a,b').rows, [['a', 'b']]);
   });
+  t('parseCSV 칸 중간 따옴표 / 닫히지 않은 따옴표', function () {
+    eq(TT.parseCSV('a,b\nx"y,z\nq,r').rows, [['a', 'b'], ['x"y', 'z'], ['q', 'r']], '칸 중간 따옴표는 글자');
+    eq(TT.parseCSV('"b"c"d,e').rows, [['bc"d', 'e']], '인용이 닫힌 뒤의 따옴표는 글자');
+    const u = TT.parseCSV('a,b\n"x,y\nz,w'); ok(u.unterminated && u.quoteLine === 2, '닫히지 않은 따옴표 감지');
+    ok(!TT.parseCSV('a,"b"\n').unterminated, '정상 파일은 unterminated=false');
+    eq(TT.parseCSV('a,""').rows, [['a', '']], '빈 인용 칸');
+    const r = TT.coursesFromCSV('과목명,교수,요일,시작,종료\n인체공학,김"철수,월,09:00,10:15\n자료구조,이서연,화,10:30,11:45');
+    eq(r.courses.map(TT.courseLabel), ['인체공학 01', '자료구조 01'], '뒤 행이 먹히지 않음'); eq(r.courses[0].professor, '김"철수'); eq(r.errors, []);
+    const r2 = TT.coursesFromCSV('과목명,교수\nA,"미완\nB,x');
+    ok(r2.errors.some(function (e) { return /닫히지 않은/.test(e.message) && e.line === 2; }), '닫히지 않은 따옴표를 오류로 보고');
+  });
   t('coursesFromCSV 병합/별칭/오류', function () {
     const csv = ['과목명,분반,교수,학점,요일,시작,종료',
       '자료구조,01,김민수,3,월,09:00,10:15', '자료구조,1,,,수,09:00,10:15', '자료구조,01,,,월,09:00,10:15',
@@ -992,6 +1030,9 @@ TT.runSelfTests = function () {
     const conf = TT.coursesFromJSON('{"courses":[{"id":"a","name":"A","slots":[{"day":1,"start":"09:00","end":"10:00"}]},{"id":"b","name":"B","slots":[{"day":1,"start":"09:30","end":"10:30"}]}],"selected":["a","b"]}');
     eq(conf.selected, ['a'], '충돌 선택 정리'); ok(conf.warnings.some(function (w) { return /해제/.test(w); }), '해제 경고');
     const inv = TT.coursesFromJSON('[{"name":""}]'); eq(inv.courses, []); eq(inv.errors[0].line, 1);
+    const num = TT.coursesFromJSON('{"courses":[{"id":1,"name":"A"}],"selected":[1,99]}');
+    eq(num.courses[0].id, '1'); eq(num.selected, ['1'], '숫자 id 선택 복원');
+    ok(num.warnings.some(function (w) { return /찾을 수 없는 id 1개/.test(w); }), '없는 id 경고');
   });
   t('toJSON ↔ coursesFromJSON 라운드트립', function () {
     const cs = TT.sampleCourses(); const sel = new Set(['c-s01', 'c-s04']);
@@ -1048,7 +1089,7 @@ TT.runSelfTests = function () {
     const r1 = run(), f = r1.f;
     ok(!f.running, '정지'); ok(r1.n < 600, '600틱 안에 정지 (' + r1.n + ')');
     let minD = Infinity;
-    f.nodes.forEach(function (a) { ok(Number.isFinite(a.x) && Number.isFinite(a.y), '유한'); ok(a.x >= f.PAD && a.x <= f.W - f.PAD && a.y >= f.PAD && a.y <= f.H - f.PAD, '경계 안'); });
+    f.nodes.forEach(function (a) { ok(Number.isFinite(a.x) && Number.isFinite(a.y), '유한'); const b = f.bounds(); ok(a.x >= b.x0 && a.x <= b.x1 && a.y >= b.y0 && a.y <= b.y1, '경계 안'); });
     for (let i = 0; i < f.nodes.length; i++) for (let j = i + 1; j < f.nodes.length; j++) { const dx = f.nodes[i].x - f.nodes[j].x, dy = f.nodes[i].y - f.nodes[j].y; minD = Math.min(minD, Math.hypot(dx, dy)); }
     ok(minD > 2 * f.R, '최소 거리 ' + minD.toFixed(1) + ' > ' + 2 * f.R);
     let eSum = 0, eN = 0, nSum = 0, nN = 0;
@@ -1060,6 +1101,7 @@ TT.runSelfTests = function () {
     const r2 = run(); eq(r2.f.positions(), f.positions(), '같은 시드 → 같은 위치');
     const f2 = new TT.Force({ seed: 3 }); f2.setGraph(cs, g.edges); f2.reheat(1); f2.step(); f2.pin('c-s01', 100, 100); f2.step();
     eq(f2.byId.get('c-s01').x, 100, '고정'); f2.unpin('c-s01'); ok(f2.byId.get('c-s01').fx === null, '고정 해제');
+    f2.pin('c-s02', 200, 200); f2.pin('c-s03', 300, 300); f2.unpinAll(); ok(f2.nodes.every(function (nd) { return nd.fx === null && nd.fy === null; }), '전체 고정 해제');
     const f3 = new TT.Force({ seed: 1 }); f3.setGraph(cs.slice(0, 3), []); const p = f3.byId.get('c-s01').x; f3.setGraph(cs, g.edges); eq(f3.byId.get('c-s01').x, p, '기존 위치 유지');
     const f4 = new TT.Force(); f4.setGraph([], []); f4.reheat(1); f4.step(); ok(!f4.running, '빈 그래프');
   });
@@ -1128,12 +1170,21 @@ if (location.hash === '#selftest') {
 const toastWrap = $('#toast-wrap');
 function toast(msg, opts = {}) {
   const details = (opts.details || []).filter(Boolean);
-  const node = h('div', { class: 'toast' + (opts.type === 'error' ? ' error' : '') }, msg,
+  const close = () => node.remove();
+  const node = h('div', { class: 'toast' + (opts.type === 'error' ? ' error' : ''), role: opts.type === 'error' ? 'alert' : null },
+    h('div', { class: 'toast-row' }, h('span', null, msg),
+      opts.action ? h('button', { class: 'toast-btn', type: 'button', onclick: () => { close(); opts.action.onClick(); } }, opts.action.label) : null,
+      h('button', { class: 'toast-x', type: 'button', 'aria-label': '알림 닫기', onclick: close }, '×')),
     details.length ? h('details', null, h('summary', null, `자세히 (${details.length})`), h('ul', null, details.map(d => h('li', null, d)))) : null);
   toastWrap.append(node);
-  setTimeout(() => node.remove(), details.length ? 9000 : 4000);
+  let timer = setTimeout(close, details.length || opts.action ? 12000 : 4000);
+  const det = node.querySelector('details');
+  // 자세히를 펼쳐 읽는 동안에는 사라지지 않는다
+  if (det) det.addEventListener('toggle', () => { clearTimeout(timer); if (!det.open) timer = setTimeout(close, 6000); });
   return node;
 }
+const snapshot = () => ({ courses: store.courses.slice(), selected: Array.from(store.selected) });
+const undoAction = prev => prev.courses.length ? { label: '되돌리기', onClick: () => { store.setCourses(prev.courses, prev.selected); toast('이전 상태로 되돌렸습니다'); } } : null;
 const tooltip = {
   el: $('#tooltip'),
   show(content, x, y) { this.el.replaceChildren(...[].concat(content)); this.el.hidden = false; this.move(x, y); },
@@ -1174,7 +1225,7 @@ const store = {
   },
   setCourses(list, selectedIds) {
     this.courses = list.slice(); this.selected = new Set(selectedIds || []); this.hoverId = null;
-    const dropped = this.recompute(); this.emit('data'); this.persist(); return dropped;
+    const dropped = this.recompute(); this.emit('reset'); this.persist(); return dropped;
   },
   addCourse(c) { this.courses.push(c); this.recompute(); this.emit('data'); this.persist(); },
   updateCourse(id, c) {
@@ -1210,7 +1261,7 @@ const graphView = {
   sim: new TT.Force({ seed: 7 }), nodeEls: new Map(), edgeEls: [], raf: null, drag: null,
   init() {
     store.subscribe(type => {
-      if (type === 'data') this.rebuild();
+      if (type === 'data' || type === 'reset') { if (type === 'reset') this.sim.unpinAll(); this.rebuild(); }
       else if (type === 'selection') { this.updateStates(); this.refreshTooltip(); }
       else if (type === 'hover') this.updateHover();
     });
@@ -1225,33 +1276,46 @@ const graphView = {
       else if (hit) { const edge = store.graph.edges[+hit.dataset.i]; if (edge) tooltip.show(edgeTooltip(edge), e.clientX, e.clientY); }
     });
     s.addEventListener('pointerout', e => {
+      if (this.drag) return; // 포인터 캡처 중에는 경계 이벤트를 무시
       const n = e.target.closest('.node'); const hit = e.target.closest('.edge-hit');
-      if ((n || hit) && !(this.drag && this.drag.moved)) { if (n) store.setHover(null); tooltip.hide(); }
+      if (n || hit) { if (n) store.setHover(null); tooltip.hide(); }
     });
     s.addEventListener('contextmenu', e => { if (e.target.closest('.node')) e.preventDefault(); });
   },
   toSvg(e) { const pt = this.svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(this.svg.getScreenCTM().inverse()); },
   onDown(e) {
+    if (this.drag) return;
     const n = e.target.closest('.node'); if (!n || e.button !== 0) return;
-    const p = this.toSvg(e);
-    this.drag = { id: n.dataset.id, el: n, x0: p.x, y0: p.y, moved: false, pointerId: e.pointerId };
+    this.drag = { id: n.dataset.id, el: n, cx: e.clientX, cy: e.clientY, moved: false, pointerId: e.pointerId };
     try { this.svg.setPointerCapture(e.pointerId); } catch (err) {}
     e.preventDefault();
   },
   onMove(e) {
-    if (this.drag) {
-      const d = this.drag, p = this.toSvg(e);
-      if (!d.moved && Math.hypot(p.x - d.x0, p.y - d.y0) > 4) { d.moved = true; tooltip.hide(); this.sim.reheat(0.3); }
-      if (d.moved) { this.sim.pin(d.id, Math.max(this.sim.PAD, Math.min(this.sim.W - this.sim.PAD, p.x)), Math.max(this.sim.PAD, Math.min(this.sim.H - this.sim.PAD, p.y))); this.sim.reheat(0.3); this.startLoop(); }
+    const d = this.drag;
+    if (d) {
+      if (e.pointerId !== d.pointerId) return;
+      // 드래그 판정은 화면 픽셀 기준 (SVG가 작게 그려져도 탭이 드래그로 오인되지 않게)
+      if (!d.moved && Math.hypot(e.clientX - d.cx, e.clientY - d.cy) > 5) { d.moved = true; tooltip.hide(); }
+      if (d.moved) {
+        const p = this.toSvg(e), b = this.sim.bounds();
+        this.sim.pin(d.id, Math.max(b.x0, Math.min(b.x1, p.x)), Math.max(b.y0, Math.min(b.y1, p.y)));
+        this.sim.reheat(0.3); this.startLoop();
+      }
       return;
     }
     if (!tooltip.el.hidden) tooltip.move(e.clientX, e.clientY);
   },
   onUp(e) {
-    const d = this.drag; if (!d) return;
+    const d = this.drag; if (!d || e.pointerId !== d.pointerId) return;
     this.drag = null;
     try { this.svg.releasePointerCapture(d.pointerId); } catch (err) {}
-    if (d.moved) { this.sim.unpin(d.id); this.sim.reheat(0.3); this.startLoop(); return; }
+    if (d.moved) {
+      // 놓은 자리에 고정한다 (불러오기·샘플로 초기화 때 풀림)
+      this.sim.reheat(0.15); this.startLoop();
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      if (!(under && under.closest && under.closest('.node'))) { store.setHover(null); tooltip.hide(); }
+      return;
+    }
     if (e.type === 'pointerup') this.onNodeClick(d.id, d.el);
   },
   onNodeClick(id, el) {
@@ -1282,7 +1346,7 @@ const graphView = {
     });
     for (const [id, el] of Array.from(this.nodeEls)) if (!g.byId.has(id)) { el.remove(); this.nodeEls.delete(id); }
     g.nodes.forEach(c => { if (!this.nodeEls.has(c.id)) { const el = this.createNode(c); this.gNodes.append(el); this.nodeEls.set(c.id, el); } });
-    this.emptyMsg.hidden = g.nodes.length > 0;
+    this.emptyMsg.toggleAttribute('hidden', g.nodes.length > 0); // SVG 요소에는 .hidden 속성이 없다
     this.sim.setGraph(g.nodes, g.edges);
     this.updateStates(); this.updateHover();
     this.sim.reheat(1); this.render(); this.startLoop();
@@ -1295,8 +1359,6 @@ const graphView = {
       el.style.setProperty('--h', hueOf(c));
       el.querySelector('.sec').textContent = c.section;
       el.querySelector('.name').textContent = shortName(c.name);
-      let title = el.querySelector('title'); if (!title) { title = svg('title'); el.prepend(title); }
-      title.textContent = TT.courseLabel(c);
     });
   },
   updateHover() {
@@ -1342,20 +1404,22 @@ const gridView = {
       if (!store.selected.has(c.id)) return;
       c.slots.forEach(s => {
         const clash = hovSlots.some(hs => TT.slotsOverlap(hs, s));
-        const blk = h('div', { class: 'blk' + (clash ? ' clash' : '') + (hid === c.id ? ' hover' : ''), 'data-id': c.id, style: `--h:${hueOf(c)};top:${pct(TT.toMin(s.start))};height:${pct(TT.toMin(s.end) + range.startMin).replace('%', '')}%`, title: `${TT.courseLabel(c)} ${TT.slotText(s)}` },
-          h('div', { class: 'n' }, c.name, ' ', c.section), h('div', { class: 'm' }, [c.professor, c.room].filter(Boolean).join(' · ')), h('div', { class: 'm' }, `${s.start}–${s.end}`));
-        blk.style.height = ((TT.toMin(s.end) - TT.toMin(s.start)) / total * 100).toFixed(3) + '%';
+        const dur = TT.toMin(s.end) - TT.toMin(s.start);
+        const who = [c.professor, c.room].filter(Boolean).join(' · ');
+        const blk = h('div', { class: 'blk' + (clash ? ' clash' : '') + (hid === c.id ? ' hover' : ''), 'data-id': c.id, style: `--h:${hueOf(c)};top:${pct(TT.toMin(s.start))};height:${(dur / total * 100).toFixed(3)}%` },
+          h('div', { class: 'n' }, c.name, ' ', c.section), who && dur >= 70 ? h('div', { class: 'm' }, who) : null, h('div', { class: 'm' }, `${s.start}–${s.end}`));
         blk.addEventListener('pointerenter', e => { store.setHover(c.id); tooltip.show(courseTooltip(c.id), e.clientX, e.clientY); });
         blk.addEventListener('pointermove', e => tooltip.move(e.clientX, e.clientY));
         blk.addEventListener('pointerleave', () => { store.setHover(null); tooltip.hide(); });
-        blk.addEventListener('click', () => store.toggleSelect(c.id));
+        // 클릭하면 블록이 사라져 pointerleave가 오지 않으므로 호버 상태를 먼저 지운다
+        blk.addEventListener('click', () => { tooltip.hide(); store.setHover(null); store.toggleSelect(c.id); });
         cols.get(s.day).append(blk);
       });
     });
     if (hov) hovSlots.forEach(s => {
-      const ghost = h('div', { class: 'blk ghost' + (store.state.blocked.has(hid) ? ' blocked' : ''), style: `--h:${hueOf(hov)};top:${pct(TT.toMin(s.start))}` },
+      const dur = TT.toMin(s.end) - TT.toMin(s.start);
+      const ghost = h('div', { class: 'blk ghost' + (store.state.blocked.has(hid) ? ' blocked' : ''), style: `--h:${hueOf(hov)};top:${pct(TT.toMin(s.start))};height:${(dur / total * 100).toFixed(3)}%` },
         h('div', { class: 'n' }, hov.name, ' ', hov.section), h('div', { class: 'm' }, `${s.start}–${s.end}`));
-      ghost.style.height = ((TT.toMin(s.end) - TT.toMin(s.start)) / total * 100).toFixed(3) + '%';
       cols.get(s.day).append(ghost);
     });
     this.el.replaceChildren(frag);
@@ -1369,27 +1433,32 @@ const listView = {
   ul: $('#course-list'), empty: $('#list-empty'), count: $('#course-count'), summary: $('#sel-summary'),
   init() { store.subscribe(type => { if (type === 'hover') this.updateHover(); else this.render(); }); },
   render() {
+    const active = document.activeElement;
+    const activeLi = active && active.closest ? active.closest('#course-list li') : null;
+    const focusId = activeLi && active.classList.contains('pick') ? activeLi.dataset.id : null;
     const courses = store.courses.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko') || a.section.localeCompare(b.section, 'ko', { numeric: true }));
     this.ul.replaceChildren(...courses.map(c => {
       const state = store.selected.has(c.id) ? 'selected' : store.state.blocked.has(c.id) ? 'blocked' : 'normal';
       const meta1 = [c.professor, typeof c.credits === 'number' ? c.credits + '학점' : null, c.room].filter(Boolean).join(' · ');
       const meta2 = c.slots.length ? c.slots.map(TT.slotText).join(', ') : '';
-      const li = h('li', { 'data-id': c.id, 'data-state': state, style: `--h:${hueOf(c)}`, class: store.hoverId === c.id ? 'hover' : '' },
-        h('span', { class: 'dot' }),
-        h('div', null,
-          h('div', { class: 'title' }, c.name, h('span', { class: 'sec' }, c.section),
+      const pick = h('button', { class: 'pick', type: 'button', 'aria-pressed': String(state === 'selected'), 'aria-disabled': state === 'blocked' ? 'true' : null },
+        h('span', { class: 'dot', 'aria-hidden': 'true' }),
+        h('span', { class: 'txt' },
+          h('span', { class: 'title' }, c.name, h('span', { class: 'sec' }, c.section),
             !c.slots.length ? h('span', { class: 'badge' }, '시간 미정') : null,
             state === 'selected' ? h('span', { class: 'badge state' }, '선택') : state === 'blocked' ? h('span', { class: 'badge state' }, '충돌') : null),
-          meta1 ? h('div', { class: 'meta', title: meta1 }, meta1) : null,
-          meta2 ? h('div', { class: 'meta', title: meta2 }, meta2) : null),
+          meta1 ? h('span', { class: 'meta', title: meta1 }, meta1) : null,
+          meta2 ? h('span', { class: 'meta', title: meta2 }, meta2) : null));
+      pick.addEventListener('click', () => { const r = store.toggleSelect(c.id); if (!r.changed && r.reason) toast('선택할 수 없습니다: ' + r.reason.split('\n')[0], { type: 'error' }); });
+      const li = h('li', { 'data-id': c.id, 'data-state': state, style: `--h:${hueOf(c)}`, class: store.hoverId === c.id ? 'hover' : '' }, pick,
         h('div', { class: 'ops' },
-          h('button', { class: 'btn small', type: 'button', title: '편집', onclick: e => { e.stopPropagation(); formView.open(c); } }, '편집'),
-          h('button', { class: 'btn small danger', type: 'button', title: '삭제', onclick: e => { e.stopPropagation(); if (confirm(`'${TT.courseLabel(c)}' 과목을 삭제할까요?`)) store.deleteCourse(c.id); } }, '삭제')));
-      li.addEventListener('click', () => { const r = store.toggleSelect(c.id); if (!r.changed && r.reason) toast('선택할 수 없습니다: ' + r.reason.split('\n')[0], { type: 'error' }); });
+          h('button', { class: 'btn small', type: 'button', 'aria-label': `${TT.courseLabel(c)} 편집`, onclick: () => formView.open(c) }, '편집'),
+          h('button', { class: 'btn small danger', type: 'button', 'aria-label': `${TT.courseLabel(c)} 삭제`, onclick: () => { if (confirm(`'${TT.courseLabel(c)}' 과목을 삭제할까요?`)) store.deleteCourse(c.id); } }, '삭제')));
       li.addEventListener('pointerenter', () => store.setHover(c.id));
       li.addEventListener('pointerleave', () => store.setHover(null));
       return li;
     }));
+    if (focusId) { const b = this.ul.querySelector(`li[data-id="${CSS.escape(focusId)}"] .pick`); if (b) b.focus(); }
     this.empty.hidden = courses.length > 0;
     this.count.textContent = courses.length ? `${courses.length}개` : '';
     const n = store.selected.size, cr = TT.totalCredits(store.courses, store.selected);
@@ -1413,7 +1482,8 @@ const formView = {
     f.name.value = course ? course.name : ''; f.section.value = course ? course.section : '';
     f.credits.value = course && course.credits != null ? course.credits : ''; f.professor.value = course && course.professor || ''; f.room.value = course && course.room || '';
     this.rows.replaceChildren(); this.errors.replaceChildren();
-    if (course && course.slots.length) course.slots.forEach(s => this.addRow(s)); else this.addRow();
+    // 편집할 때는 실제 시간만 채운다 (시간 미정 과목에 기본 시간이 끼어들지 않도록)
+    if (course) course.slots.forEach(s => this.addRow(s)); else this.addRow();
     this.dialog.showModal(); f.name.focus();
   },
   addRow(slot) {
@@ -1433,6 +1503,7 @@ const formView = {
   submit() {
     const n = TT.normalizeCourse(this.collect());
     const errs = n.errors.slice();
+    if (this.form.credits.validity && this.form.credits.validity.badInput) errs.unshift('학점은 숫자로 입력하세요');
     const key = TT.courseKey(n.course);
     if (!errs.length && store.courses.some(c => c.id !== this.editingId && TT.courseKey(c) === key)) errs.push('이미 같은 과목·분반이 있습니다');
     this.errors.replaceChildren(...errs.map(e => h('li', null, e)));
@@ -1454,13 +1525,22 @@ async function readFileText(file) {
 const fmtErr = e => e.line ? `${e.line}행: ${e.message}` : e.message;
 function importText(text, opts = {}) {
   const res = TT.importAny(text);
-  if (!res.courses.length) { toast('불러올 수 있는 과목이 없습니다', { type: 'error', details: res.errors.map(fmtErr).concat(res.warnings) }); return res; }
-  if (opts.confirmReplace !== false && store.courses.length && !confirm(`기존 과목 ${store.courses.length}개를 대체합니다. 계속할까요?`)) return null;
+  const isJson = res.format === 'json';
+  const unit = isJson ? '개 항목' : '행';
+  const details = res.errors.map(isJson ? (e => e.message) : fmtErr).concat(res.warnings);
+  if (!res.courses.length) { toast('불러올 수 있는 과목이 없습니다', { type: 'error', details }); return res; }
+  if (opts.confirmReplace !== false && store.courses.length) {
+    let q = `${res.courses.length}개 과목을 읽었습니다`;
+    if (res.errors.length) q += ` (${res.errors.length}${unit}은 오류로 건너뜀)`;
+    q += `.\n현재 과목 ${store.courses.length}개를 대체할까요? 불러온 뒤에도 알림의 「되돌리기」로 취소할 수 있습니다.`;
+    if (!confirm(q)) return null;
+  }
+  const prev = snapshot();
   store.setCourses(res.courses, res.selected);
   let msg = `${res.courses.length}개 과목 불러옴 (${res.format.toUpperCase()})`;
-  if (res.errors.length) msg += `, ${res.errors.length}행 무시됨`;
+  if (res.errors.length) msg += `, ${res.errors.length}${unit} 무시됨`;
   if (res.selected.length) msg += `, ${res.selected.length}개 선택 복원`;
-  toast(msg, { details: res.errors.map(fmtErr).concat(res.warnings) });
+  toast(msg, { details, action: undoAction(prev) });
   return res;
 }
 async function handleFiles(files) {
@@ -1493,7 +1573,8 @@ $('#btn-add').addEventListener('click', () => formView.open(null));
 $('#btn-clear-sel').addEventListener('click', () => store.clearSelection());
 $('#btn-sample').addEventListener('click', () => {
   if (store.courses.length && !confirm('현재 과목과 선택을 모두 지우고 샘플 데이터로 되돌릴까요?')) return;
-  store.setCourses(TT.sampleCourses(), []); toast('샘플 데이터를 불러왔습니다');
+  const prev = snapshot();
+  store.setCourses(TT.sampleCourses(), []); toast('샘플 데이터를 불러왔습니다', { action: undoAction(prev) });
 });
 $('#btn-theme').addEventListener('click', () => {
   const next = currentTheme() === 'dark' ? 'light' : 'dark';
