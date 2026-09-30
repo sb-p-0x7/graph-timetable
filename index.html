@@ -414,7 +414,7 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
 <dialog id="gist-dialog" aria-labelledby="gist-title">
   <form id="gist-form" method="dialog" novalidate>
     <h2 id="gist-title">GIST 개설강좌 불러오기</h2>
-    <p class="note">학생 프로젝트 <a href="https://github.com/Gijol/gijol-v2" target="_blank" rel="noopener">Gijol</a>이 ZEUS 개설강좌를 정리해 공개한 데이터(MIT 라이선스)를 받아옵니다. 공식 자료보다 늦거나 다를 수 있으니, 수강신청 전에는 ZEUS에서 한 번 더 확인하세요.</p>
+    <p class="note">학생 프로젝트 <a href="https://github.com/Gijol/gijol-v2" target="_blank" rel="noopener">Gijol</a>이 ZEUS 개설강좌를 정리해 저장소(MIT 라이선스)에 공개한 데이터를 받아옵니다. 공식 자료보다 늦거나 다를 수 있으니, 수강신청 전에는 ZEUS에서 한 번 더 확인하세요.</p>
     <label class="field">학기 (예: 2026-2)<input name="term" value="2026-2" pattern="\d{4}-[12]" autocomplete="off" required></label>
     <p class="note">공식 파일을 직접 쓰려면 ZEUS 수강신청 사이트의 개설강좌 조회에서 엑셀로 내려받거나, 학사공지의 「학사교과 시간표」 XLS를 받아 「파일 불러오기」로 여세요.</p>
     <ul class="form-errors" id="gist-errors" role="alert"></ul>
@@ -427,7 +427,7 @@ dialog h2 { margin: 0 0 4px; font-size: 16px; }
 
 <div id="tooltip" role="tooltip" hidden></div>
 <div id="toast-wrap" aria-live="polite"></div>
-<div id="drop-overlay" hidden>파일을 여기에 놓으면 불러옵니다 (JSON / CSV)</div>
+<div id="drop-overlay" hidden>파일을 여기에 놓으면 불러옵니다 (JSON · CSV · 엑셀)</div>
 <input type="file" id="file-input" accept=".json,.csv,.xls,.xlsx,application/json,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
 <div id="selftest" hidden></div>
 
@@ -1421,25 +1421,25 @@ TT.runSelfTests = function () {
     const csv = [
       '2026학년도 2학기 개설강좌정보,,,,,,,,,,,,',
       'NO,개설부서,교과목-분반,교과목명,이수구분,교과연구,과정구분,강/실/학,시간표,강의실,"수강\n정원",강의언어,담당교수',
-      '1,기초교육학부,GS0101-01,축구,필수,교과,학사,2/0/0,화 19:00~21:00,,9,한국어,서문학[61594]',
-      '2,기초교육학부,GS1603-03,영어 Ⅰ: 발표와 토론,필수,교과,학사,3/0/2,"화 14:30~16:00\n목 14:30~16:00","지스트대학C동(101)\n지스트대학C동(101)",20,English,엘리스 리[61457]',
-      '3,AI학과,AI2000-01,자료구조와 알고리즘,선택,교과,학사,3/2/4,"월 14:30~16:00\n수 14:30~16:00\n금 10:00~12:00",,50,한국어,"수만 판데[63982]\n김교수[1]"',
+      '1,기초교육학부,GS0101-01,축구,필수,교과,학사,2/0/0,화 19:00~21:00,,9,한국어,가나다[10001]',
+      '2,기초교육학부,GS1603-03,영어 Ⅰ: 발표와 토론,필수,교과,학사,3/0/2,"화 14:30~16:00\n목 14:30~16:00","가상관(101)\n가상관(101)",20,English,라마바[10002]',
+      '3,AI학과,AI2000-01,자료구조와 알고리즘,선택,교과,학사,3/2/4,"월 14:30~16:00\n수 14:30~16:00\n금 10:00~12:00",,50,한국어,"사아자[10003]\n차카타[10004]"',
       '4,AI학과,AI5001-01,인공지능 콜로퀴움,필수,교과,석사,1/0/0,All 00:00~00:00,,0,English,',
-      '5,화학과,CH2103-01,유기화학Ⅰ,필수,교과,학사,3/0/3,화 10:30~12:00(격주),,50,English,정원진[1]'
+      '5,화학과,CH2103-01,유기화학Ⅰ,필수,교과,학사,3/0/3,화 10:30~12:00(격주),,50,English,파하가[10005]'
     ].join('\r\n');
     const r = TT.coursesFromCSV(csv);
     eq(r.courses.map(function (c) { return c.id; }), ['GS0101-01', 'GS1603-03', 'AI2000-01', 'AI5001-01'], '제목 줄을 건너뛰고 분반별로 읽음');
-    const a = r.courses[0]; eq([a.code, a.section, a.name, a.dept, a.kind, a.level, a.credits, a.professor], ['GS0101', '01', '축구', '기초교육학부', '필수', '학사', 0, '서문학']);
+    const a = r.courses[0]; eq([a.code, a.section, a.name, a.dept, a.kind, a.level, a.credits, a.professor], ['GS0101', '01', '축구', '기초교육학부', '필수', '학사', 0, '가나다']);
     eq(a.slots, [S(2, '19:00', '21:00')]);
-    const b = r.courses[1]; eq(b.credits, 2, '강/실/학의 마지막 숫자'); eq(b.slots.length, 2); eq(b.room, '지스트대학C동(101)', '같은 강의실 한 번만');
-    eq(r.courses[2].professor, '수만 판데, 김교수', '교번 제거·여러 명'); eq(r.courses[2].slots.length, 3);
+    const b = r.courses[1]; eq(b.credits, 2, '강/실/학의 마지막 숫자'); eq(b.slots.length, 2); eq(b.room, '가상관(101)', '같은 강의실 한 번만');
+    eq(r.courses[2].professor, '사아자, 차카타', '교번 제거·여러 명'); eq(r.courses[2].slots.length, 3);
     eq(r.courses[3].slots, [], 'All 00:00~00:00 → 시간 미정'); eq(r.courses[3].level, '석사');
     eq(r.errors.length, 1); eq(r.errors[0].line, 13, '오류 행 번호(따옴표 속 줄바꿈도 줄로 센다)'); ok(/유기화학/.test(r.errors[0].message), r.errors[0].message);
   });
   t('Gijol 정리본 JSON 변환', function () {
     const doc = { version: '1.0', source: 'registration-system', count: 3, items: [
       { no: 1, department: 'AI학과', course_code: 'AI6404', section: '01', title: '신경정보학', category: '선택', subcategory: null, research_area: '교과', program: '석사', hours: { lecture_hours: 3, lab_hours: 0, credits: 3 },
-        meetings: [{ day: 'TUE', start: '10:30', end: '12:00', room: '다산빌딩(301)' }, { day: 'THU', start: '10:30', end: '12:00', room: '다산빌딩(301)' }], capacity: 0, instructors: [{ name: '이보름', staff_id: '60931' }] },
+        meetings: [{ day: 'TUE', start: '10:30', end: '12:00', room: '가상관(301)' }, { day: 'THU', start: '10:30', end: '12:00', room: '가상관(301)' }], capacity: 0, instructors: [{ name: '나다라', staff_id: '10006' }] },
       { no: 2, department: '도전탐색과정', course_code: 'GS1001', section: '02', title: '미적분학과 응용', category: '필수', program: '학사', hours: { credits: 3 }, meetings: [], instructors: [] },
       { no: 3, department: '도전탐색과정', course_code: 'GS1001', section: '02', title: '중복', category: '필수', program: '학사', hours: { credits: 3 }, meetings: [], instructors: [] }
     ] };
@@ -1447,7 +1447,7 @@ TT.runSelfTests = function () {
     const r = TT.coursesFromGijol(doc);
     eq(r.courses.length, 2); eq(r.warnings.length, 1, '중복 분반 경고');
     const c = r.courses[0];
-    eq([c.id, c.code, c.section, c.name, c.dept, c.kind, c.level, c.credits, c.professor, c.room], ['AI6404-01', 'AI6404', '01', '신경정보학', 'AI학과', '선택', '석사', 3, '이보름', '다산빌딩(301)']);
+    eq([c.id, c.code, c.section, c.name, c.dept, c.kind, c.level, c.credits, c.professor, c.room], ['AI6404-01', 'AI6404', '01', '신경정보학', 'AI학과', '선택', '석사', 3, '나다라', '가상관(301)']);
     eq(c.slots, [S(2, '10:30', '12:00'), S(4, '10:30', '12:00')], '영문 요일 변환');
     const imp = TT.importAny(JSON.stringify(doc)); eq(imp.format, 'gijol'); eq(imp.courses.length, 2);
     eq(TT.importAny('{"courses":[]}').format, 'json', '일반 JSON은 그대로');
@@ -2300,7 +2300,7 @@ async function handleFiles(files) {
   catch (e) { toast('파일을 읽지 못했습니다: ' + e.message, { type: 'error' }); }
 }
 
-// GIST 개설강좌: Gijol(MIT)이 공개한 정리본을 학기별로 받아온다
+// GIST 개설강좌: Gijol 저장소(MIT)에 공개된 정리본을 학기별로 받아온다
 const gijolURL = term => { const m = /^(\d{4})-([12])$/.exec(term); return m ? `https://raw.githubusercontent.com/Gijol/gijol-v2/dev/DB/timetable/registration-system/${m[1]}_0${m[2]}_course_info.normalized.json` : null; };
 const gistView = {
   dialog: $('#gist-dialog'), form: $('#gist-form'), errors: $('#gist-errors'), btn: $('#btn-gist-load'),
@@ -2326,7 +2326,7 @@ const gistView = {
   }
 };
 function exportJSON() {
-  const blob = new Blob([TT.toJSON(store.courses, store.selected)], { type: 'application/json' });
+  const blob = new Blob([TT.toJSON(store.courses, store.selected, { interests: store.view })], { type: 'application/json' });
   const a = h('a', { href: URL.createObjectURL(blob), download: `timetable-${ymd()}.json` });
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   toast('JSON 파일로 내보냈습니다');
